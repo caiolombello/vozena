@@ -1,5 +1,8 @@
 """KDE Wayland global shortcut, with saved bindings and conflict handling."""
 
+import json
+import subprocess
+
 from PySide6.QtCore import QObject, QThread, Signal, Slot, SLOT
 from PySide6.QtDBus import QDBusConnection
 from PySide6.QtGui import QKeySequence
@@ -10,6 +13,55 @@ DEFAULT_KEY = "Meta+Shift+M"
 SERVICE = "org.kde.kglobalaccel"
 INTERFACE = "org.kde.KGlobalAccel"
 COMPONENT_INTERFACE = "org.kde.kglobalaccel.Component"
+
+
+class _Types:
+    """Plain containers keep the KDE typed registration contract dependency-free."""
+    @staticmethod
+    def Array(value, signature=None):
+        return list(value)
+
+    @staticmethod
+    def Struct(value, signature=None):
+        return tuple(value)
+
+    UInt32 = int
+
+
+class _BusctlInterface:
+    """Use Fedora's system D-Bus client from the isolated Python runtime."""
+    def _call(self, method, signature, arguments, result_type="", timeout=.5):
+        result = subprocess.run(
+            ["busctl", "--user", f"--timeout={timeout}", "--json=short", "call",
+             SERVICE, "/kglobalaccel", INTERFACE, method, signature,
+             *[str(value) for value in arguments]],
+            capture_output=True, text=True, check=True, timeout=timeout + .5,
+        )
+        if not result_type:
+            return None
+        reply = json.loads(result.stdout)
+        if reply["type"] != result_type or len(reply["data"]) != 1:
+            raise ValueError("Unexpected KDE shortcut reply")
+        return reply["data"][0]
+
+    def globalShortcutAvailable(self, sequence, component, timeout=.5):
+        return self._call("globalShortcutAvailable", "(ai)s",
+                          [len(sequence[0]), *sequence[0], component], "b", timeout)
+
+    def doRegister(self, identity, timeout=.5):
+        self._call("doRegister", "as", [len(identity), *identity], timeout=timeout)
+
+    def setShortcutKeys(self, identity, sequences, flags, timeout=.5):
+        arguments = [len(identity), *identity, len(sequences)]
+        for sequence in sequences:
+            arguments.extend([len(sequence[0]), *sequence[0]])
+        return self._call("setShortcutKeys", "asa(ai)u", [*arguments, flags], "a(ai)", timeout)
+
+    def getComponent(self, component, timeout=.5):
+        return self._call("getComponent", "s", [component], "o", timeout)
+
+    def setInactive(self, identity, timeout=.5):
+        self._call("setInactive", "as", [len(identity), *identity], timeout=timeout)
 
 
 def bind_shortcut(interface, dbus):
@@ -37,18 +89,12 @@ class _Registration(QThread):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.interface = None
-        self.dbus = None
-        self.bus = None
+        self.dbus = _Types
 
     def run(self):
         try:
-            import dbus
-            self.dbus = dbus
-            self.bus = dbus.SessionBus()
-            self.interface = dbus.Interface(
-                self.bus.get_object(SERVICE, "/kglobalaccel", introspect=False), INTERFACE,
-            )
-            path, keys = bind_shortcut(self.interface, dbus)
+            self.interface = _BusctlInterface()
+            path, keys = bind_shortcut(self.interface, self.dbus)
             if self.isInterruptionRequested():
                 self.deactivate()
             else:

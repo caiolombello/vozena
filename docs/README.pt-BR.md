@@ -12,7 +12,7 @@ Todo o processamento de áudio acontece no seu computador. A Vozena não tem ser
 
 ## Escopo atual
 
-A Vozena v0.4.0 é a primeira versão pública de prévia. Ela foi validada em:
+A Vozena v0.4.1 é uma versão pública de prévia. Ela foi validada em:
 
 - Fedora 44 x86_64
 - KDE Plasma com PipeWire 1.6.9
@@ -22,28 +22,28 @@ Outras distribuições Linux, interfaces gráficas, arquiteturas, versões do Pi
 
 A Vozena não cancela eco e não promete remover todos os sons de fundo. Ela não controla o ganho físico nem o padrão de captação do microfone; faça esses ajustes no próprio Blue Yeti. Não há garantia de funcionamento com um aplicativo de chamadas específico.
 
-## Instalar a versão de código-fonte v0.4.0
+## Instalar a versão de código-fonte v0.4.1
 
 A versão publicada é um arquivo limpo de código-fonte. Ela não contém `.deps`, ambiente virtual, binários de plugins nem wheels do Python. Portanto, a preparação precisa de conexão de rede para baixar arquivos fixados do GitHub, Fedora e PyPI.
 
 1. Instale os pré-requisitos do Fedora:
 
    ```bash
-   sudo dnf install python3 python3-pip pipewire pipewire-utils rpm cpio \
+   sudo dnf install python3 python3-pip pipewire pipewire-utils rpm cpio systemd \
      libsndfile libatomic libstdc++ xcb-util-cursor
    ```
 
    Uma instalação normal do Fedora 44 KDE já fornece as demais bibliotecas gráficas do Qt usadas pelo aplicativo.
 
-2. Pelo navegador, baixe `vozena-0.4.0-source.tar.gz` e `SHA256SUMS` na [versão v0.4.0](https://github.com/caiolombello/vozena/releases/tag/v0.4.0). Coloque os dois arquivos na mesma pasta e confira o arquivo antes de extraí-lo:
+2. Pelo navegador, baixe `vozena-0.4.1-source.tar.gz` e `SHA256SUMS` na [versão v0.4.1](https://github.com/caiolombello/vozena/releases/tag/v0.4.1). Coloque os dois arquivos na mesma pasta e confira o arquivo antes de extraí-lo:
 
    ```bash
    sha256sum --check SHA256SUMS
-   tar -xzf vozena-0.4.0-source.tar.gz
-   cd vozena-0.4.0
+   tar -xzf vozena-0.4.1-source.tar.gz
+   cd vozena-0.4.1
    ```
 
-   Prossiga somente se o `sha256sum` mostrar `vozena-0.4.0-source.tar.gz: OK`.
+   Prossiga somente se o `sha256sum` mostrar `vozena-0.4.1-source.tar.gz: OK`.
 
 3. Prepare e instale para o seu usuário:
 

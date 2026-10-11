@@ -6,7 +6,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, qInstallMessageHandler
 from PySide6.QtNetwork import QLocalSocket
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QWidget
@@ -119,6 +119,23 @@ class DesktopTests(unittest.TestCase):
                 connection.abort()
             self.assertEqual(calls, ["status"])
             server.close()
+
+    def test_idle_command_socket_times_out_without_qt_binding_warnings(self):
+        warnings = []
+        previous = qInstallMessageHandler(lambda _kind, _context, message: warnings.append(message))
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                path = str(Path(directory) / "idle.sock")
+                server = CommandServer(lambda _: {"ok": True}, path=path)
+                connection = QLocalSocket()
+                connection.connectToServer(path)
+                self.assertTrue(connection.waitForConnected(100))
+                QTest.qWait(1200)
+                self.assertEqual(connection.state(), QLocalSocket.LocalSocketState.UnconnectedState)
+                server.close()
+            self.assertFalse(any('Cannot add dynamic method "abort()"' in message for message in warnings), warnings)
+        finally:
+            qInstallMessageHandler(previous)
 
 
 if __name__ == "__main__":

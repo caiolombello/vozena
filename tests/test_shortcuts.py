@@ -2,6 +2,7 @@ import os
 import subprocess
 import time
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -74,6 +75,68 @@ class ShortcutTests(unittest.TestCase):
         shortcut.close()
         shortcut.pressed("yeti-voz", "toggle-mute", 1)
         self.assertEqual(calls, [True])
+
+    def test_registration_uses_system_busctl_in_an_isolated_runtime(self):
+        replies = [
+            '{"type":"b","data":[true]}',
+            '',
+            '{"type":"a(ai)","data":[[[[301989965,0,0,0]]]]}',
+            '{"type":"a(ai)","data":[[[[201326669,0,0,0]]]]}',
+            '{"type":"o","data":["/component/yeti_voz"]}',
+            '',
+            '',
+        ]
+        labels, statuses = [], []
+        with patch("subprocess.run", side_effect=[
+            subprocess.CompletedProcess([], 0, reply, "") for reply in replies
+        ]) as run, patch("yeti_voice.shortcuts.QDBusConnection.sessionBus") as session_bus:
+            session_bus.return_value.connect.return_value = True
+            shortcut = GlobalShortcut(lambda: None)
+            shortcut.binding_changed.connect(labels.append)
+            shortcut.status_changed.connect(statuses.append)
+            shortcut.start()
+            try:
+                deadline = time.monotonic() + 2
+                while not labels and not statuses and time.monotonic() < deadline:
+                    QApplication.processEvents()
+                    time.sleep(.01)
+                self.assertEqual(labels, ["Ctrl+Alt+M"], statuses)
+                calls = [call.args[0] for call in run.call_args_list]
+                self.assertEqual([call[8] for call in calls[:5]], [
+                    "globalShortcutAvailable", "doRegister", "setShortcutKeys",
+                    "setShortcutKeys", "getComponent",
+                ])
+                self.assertEqual(calls[0][9:], ["(ai)s", "1", "301989965", "yeti-voz"])
+                self.assertEqual(calls[2][9:], ["asa(ai)u", "4", *ACTION_ID,
+                                              "1", "1", "301989965", "8"])
+                self.assertEqual(calls[3][-1], "2")
+                for call in run.call_args_list:
+                    self.assertEqual(call.args[0][:4], ["busctl", "--user", "--timeout=0.5", "--json=short"])
+                    self.assertTrue(call.kwargs["check"])
+                    self.assertLessEqual(call.kwargs["timeout"], 1)
+            finally:
+                shortcut.close()
+                shortcut.finish()
+            self.assertEqual(run.call_args.args[0][8:], ["setInactive", "as", "4", *ACTION_ID])
+
+    def test_missing_or_timed_out_busctl_reports_unavailable_without_binding(self):
+        for error in (FileNotFoundError("busctl"), subprocess.TimeoutExpired("busctl", 1)):
+            with self.subTest(error=type(error).__name__), patch("subprocess.run", side_effect=error):
+                labels, statuses = [], []
+                shortcut = GlobalShortcut(lambda: None)
+                shortcut.binding_changed.connect(labels.append)
+                shortcut.status_changed.connect(statuses.append)
+                shortcut.start()
+                try:
+                    deadline = time.monotonic() + 2
+                    while not statuses and time.monotonic() < deadline:
+                        QApplication.processEvents()
+                        time.sleep(.01)
+                    self.assertEqual(statuses, ["Atalho global indisponível nesta sessão do desktop."])
+                    self.assertEqual(labels, [])
+                finally:
+                    shortcut.close()
+                    shortcut.finish()
 
     @unittest.skipUnless(os.environ.get("YETI_RUN_DESKTOP_TESTS") == "1", "opt-in KDE integration")
     def test_kde_daemon_delivers_the_registered_action(self):

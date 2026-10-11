@@ -12,7 +12,7 @@ Audio processing stays on your computer. Vozena has no network server, account, 
 
 ## Current scope
 
-Vozena v0.4.0 is the first public preview. It has been validated on:
+Vozena v0.4.1 is a public preview. It has been validated on:
 
 - Fedora 44 x86_64
 - KDE Plasma with PipeWire 1.6.9
@@ -31,21 +31,21 @@ The release is a clean source archive. It contains no vendored `.deps`, virtual 
 1. Install the Fedora prerequisites:
 
    ```bash
-   sudo dnf install python3 python3-pip pipewire pipewire-utils rpm cpio \
+   sudo dnf install python3 python3-pip pipewire pipewire-utils rpm cpio systemd \
      libsndfile libatomic libstdc++ xcb-util-cursor
    ```
 
    A normal Fedora 44 KDE installation already supplies the remaining Qt display libraries used by the app.
 
-2. In a browser, download `vozena-0.4.0-source.tar.gz` and `SHA256SUMS` from the [v0.4.0 release](https://github.com/caiolombello/vozena/releases/tag/v0.4.0). Put both files in the same directory, then verify the archive before extracting it:
+2. In a browser, download `vozena-0.4.1-source.tar.gz` and `SHA256SUMS` from the [v0.4.1 release](https://github.com/caiolombello/vozena/releases/tag/v0.4.1). Put both files in the same directory, then verify the archive before extracting it:
 
    ```bash
    sha256sum --check SHA256SUMS
-   tar -xzf vozena-0.4.0-source.tar.gz
-   cd vozena-0.4.0
+   tar -xzf vozena-0.4.1-source.tar.gz
+   cd vozena-0.4.1
    ```
 
-   Continue only if `sha256sum` reports `vozena-0.4.0-source.tar.gz: OK`.
+   Continue only if `sha256sum` reports `vozena-0.4.1-source.tar.gz: OK`.
 
 3. Prepare and install for your user:
 

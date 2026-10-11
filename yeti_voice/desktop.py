@@ -72,7 +72,8 @@ class CommandServer(QObject):
             connection.setReadBufferSize(128)
             deadline = QTimer(connection)
             deadline.setSingleShot(True)
-            deadline.timeout.connect(connection.abort)
+            # A Python callable keeps the wrapper available with official Qt wheels.
+            deadline.timeout.connect(lambda c=connection: c.abort())
             deadline.start(1000)
             connection.readyRead.connect(lambda c=connection: self._read(c))
             connection.disconnected.connect(lambda c=connection: self._discard(c))
