@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Name=Vozena
+Comment=Local voice processing for calls and meetings with Blue Yeti
+Comment[pt_BR]=Áudio local para chamadas e reuniões com Blue Yeti
+Exec=vozena
+Icon=vozena
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=Vozena;Yeti;microphone;voice;meetings;
+StartupNotify=true
+Actions=Show;ToggleMute;
+
+[Desktop Action Show]
+Name=Open Vozena
+Name[pt_BR]=Abrir Vozena
+Exec=vozena --show
+
+[Desktop Action ToggleMute]
+Name=Toggle mute
+Name[pt_BR]=Alternar silêncio
+Exec=vozena --toggle-mute

@@ -1,0 +1,17 @@
+name: Feature request
+description: Suggest an improvement to Vozena.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the workflow or difficulty you encounter.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement
+      description: Describe the behavior you would find useful and any alternatives.
+    validations:
+      required: true

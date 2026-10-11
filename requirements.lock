@@ -1,0 +1,6 @@
+# Fedora 44 x86_64; Python >=3.11; official PyPI manylinux_2_34 wheels.
+# Install with --require-hashes --only-binary=:all:.
+PySide6==6.11.2 --hash=sha256:dc6d03990489a5085842770718392ef5de36352d8f608d9a9fe03e60af4d7b66
+PySide6_Addons==6.11.2 --hash=sha256:a8b00956925fbdeffc7052cf933506391289f35ac4f3f71a0a167ec195cd47b4
+PySide6_Essentials==6.11.2 --hash=sha256:aaf9f25f0f324874085fa5b26a610318db8a8e243cf85bb3e5400595191c7778
+shiboken6==6.11.2 --hash=sha256:7a7a0a72a9ed26c9bf77d42246b1c736486befb8f31aa2fb29957ea4cdd1c1c2

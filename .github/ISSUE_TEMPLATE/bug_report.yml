@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible problem with Vozena.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove personal information from screenshots and logs. Audio recordings are optional; do not attach private conversations or someone else's voice without permission.
+  - type: input
+    id: version
+    attributes:
+      label: Vozena version and Fedora release
+      placeholder: Vozena 0.4.0, Fedora 44 KDE, x86_64
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional microphone model, application, or sanitized error message.

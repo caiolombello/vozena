@@ -1,0 +1,20 @@
+# Local runtimes and upstream binary downloads
+.deps/
+.venv/
+venv/
+# Private test evidence and generated release artifacts
+artifacts/
+dist/
+# Python and editor state
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+.idea/
+.vscode/
+.env
+.env.*
+*.log
+*.wav
+*.pcm

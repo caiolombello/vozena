@@ -1,0 +1,24 @@
+{
+  "platform": {"os": "fedora", "version": "44", "architecture": "x86_64", "glibc_min": "2.43"},
+  "plugins": {
+    "rnnoise": {
+      "version": "1.10",
+      "path": "rnnoise/linux-rnnoise/ladspa/librnnoise_ladspa.so",
+      "sha256": "ba2b420c76cd2f1e7684430c96fef8c533041d5f67b94060f8eeda6af1701f97",
+      "source": "https://github.com/werman/noise-suppression-for-voice/releases/tag/v1.10",
+      "archive": {"url": "https://github.com/werman/noise-suppression-for-voice/releases/download/v1.10/linux-rnnoise.zip", "filename": "rnnoise-linux-v1.10.zip", "sha256": "811390b6eb6e28dde023c70590c74d26e74ebb2e595bcf4b95af2341db160e99", "format": "zip", "member": "linux-rnnoise/ladspa/librnnoise_ladspa.so"},
+      "licenses": [{"path": "rnnoise/LICENSE", "url": "https://raw.githubusercontent.com/werman/noise-suppression-for-voice/v1.10/LICENSE", "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"}]
+    },
+    "lsp": {
+      "version": "1.2.29-1.fc44",
+      "path": "lsp/usr/lib64/ladspa/lsp-plugins-ladspa.so",
+      "sha256": "ddd118aa3ed8d47d8f9d18808f4bc2b722bbca31cb2a09c6040d2fc497c9fec3",
+      "source": "https://packages.fedoraproject.org/pkgs/lsp-plugins/lsp-plugins-ladspa/",
+      "archive": {"url": "https://kojipkgs.fedoraproject.org/packages/lsp-plugins/1.2.29/1.fc44/x86_64/lsp-plugins-ladspa-1.2.29-1.fc44.x86_64.rpm", "filename": "lsp-plugins-ladspa-1.2.29-1.fc44.x86_64.koji.rpm", "sha256": "2b84609697b8df774c30253b6cfb5b32a87c838b909a27cfe495bb012beb0a5a", "format": "rpm", "member": "./usr/lib64/ladspa/lsp-plugins-ladspa.so"},
+      "licenses": [
+        {"path": "lsp/usr/share/licenses/lsp-plugins-ladspa/COPYING", "member": "./usr/share/licenses/lsp-plugins-ladspa/COPYING", "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"},
+        {"path": "lsp/usr/share/licenses/lsp-plugins-ladspa/COPYING.LESSER", "member": "./usr/share/licenses/lsp-plugins-ladspa/COPYING.LESSER", "sha256": "e3a994d82e644b03a792a930f574002658412f62407f5fee083f2555c5f23118"}
+      ]
+    }
+  }
+}

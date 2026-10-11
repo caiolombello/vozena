@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Fedora 44 offline tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      # Fedora 44 x86_64, verified against registry.fedoraproject.org.
+      # LSP 1.2.29 requires the Fedora 44 glibc ABI.
+      image: registry.fedoraproject.org/fedora@sha256:b0d8e732ad7e4fc32b6c77e040c40be98a8092f237271d264cc8d36fd9674372
+    defaults:
+      run:
+        shell: bash
+    env:
+      QT_QPA_PLATFORM: offscreen
+      YETI_RUN_PIPEWIRE_TESTS: '0'
+      YETI_RUN_DESKTOP_TESTS: '0'
+    steps:
+      - name: Install Fedora test dependencies
+        run: |
+          dnf -y install python3 python3-pip git rpm cpio \
+            pipewire pipewire-utils libsndfile libatomic libstdc++ \
+            xcb-util-cursor mesa-libGL fontconfig libxkbcommon \
+            libxkbcommon-x11 dbus-libs nodejs
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare verified plugins and locked Python dependencies
+        run: |
+          python3 scripts/prepare.py --plugins-only
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+      - name: Run unit, UI, and offline DSP tests
+        run: .venv/bin/python -m unittest discover -s tests -v
+      - name: Check static website JavaScript
+        run: |
+          while IFS= read -r -d '' script; do
+            node --check "$script"
+          done < <(find site -type f -name '*.js' -print0)

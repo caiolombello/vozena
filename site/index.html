@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111820">
+  <title>Vozena — Your voice. Less noise.</title>
+  <meta name="description" content="A native, open-source Linux app for clearer speech with your Blue Yeti. Local noise suppression, equalization, and guided calibration. No cloud audio.">
+  <meta property="og:title" content="Vozena — Your voice. Less noise.">
+  <meta property="og:description" content="A calm, native Linux app for your Blue Yeti. Open source. Local audio. No subscription.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://caiolombello.github.io/vozena/">
+  <meta property="og:image" content="https://caiolombello.github.io/vozena/assets/app.webp">
+  <link rel="icon" href="assets/vozena-mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-i18n="skip">Skip to content</a>
+  <header class="header wrap">
+    <a class="brand" href="#" aria-label="Vozena home" data-i18n-aria="home"><img src="assets/vozena-mark.svg" width="36" height="36" alt=""><span>vozena<span class="brand-dot">.</span></span></a>
+    <nav class="nav" aria-label="Main navigation" data-i18n-aria="navigation">
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#compatibility" data-i18n="nav.compatibility">Compatibility</a>
+      <a class="nav-source" href="https://github.com/caiolombello/vozena" data-i18n="nav.source">Source ↗</a>
+    </nav>
+    <div class="languages" role="group" aria-label="Choose language" data-i18n-aria="language">
+      <a href="?lang=en" lang="en" hreflang="en" data-language="en" aria-current="true">EN</a>
+      <span aria-hidden="true">/</span>
+      <a href="?lang=pt" lang="pt-BR" hreflang="pt-BR" data-language="pt">PT</a>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span><span data-i18n="hero.eyebrow">NATIVE LINUX AUDIO · v0.4.0 PREVIEW</span></div>
+        <h1 id="hero-title"><span data-i18n="hero.first">Your voice.</span><br><em data-i18n="hero.second">Less noise.</em></h1>
+        <p class="hero-description" data-i18n="hero.description">Give your Blue Yeti a little clarity. A native Linux app that helps your voice come through in calls, meetings, and everything you have to say.</p>
+        <div class="hero-actions"><a class="button button-dark" href="https://github.com/caiolombello/vozena/releases/latest"><span data-i18n="hero.download">Get Vozena for Linux</span><span aria-hidden="true">↗</span></a><a class="text-link" href="#how-it-works"><span data-i18n="hero.how">How it works</span><span aria-hidden="true">↓</span></a></div>
+        <p class="hero-note" data-i18n="hero.note">Free and open source. Your audio stays on your computer.</p>
+      </div>
+      <div class="hero-visual">
+        <div class="visual-heading"><span data-i18n="hero.visual">A LITTLE LESS IN THE WAY.</span><span aria-hidden="true">01 / VOICE</span></div>
+        <div class="app-stage"><div class="stage-orbit" aria-hidden="true"></div><img class="app-image" src="assets/app.webp" width="1180" height="860" alt="Vozena native desktop interface in Portuguese, showing Blue Yeti audio controls, noise suppression, equalizer, volume, and a paused meter with demonstration values." data-i18n-alt="hero.image" fetchpriority="high"></div>
+        <div class="visual-caption"><span class="caption-line" aria-hidden="true"></span><span data-i18n="hero.caption">Native interface, shown with demonstration values.</span></div>
+      </div>
+    </section>
+    <div class="principles wrap" aria-label="Product principles" data-i18n-aria="principles"><span data-i18n="principle.native">Native to your desktop</span><span data-i18n="principle.local">Processed locally</span><span data-i18n="principle.account">No account. No subscription.</span><span data-i18n="principle.open">Open by design</span></div>
+
+    <section class="signal-section" id="features" aria-labelledby="signal-title">
+      <div class="wrap">
+        <div class="section-top"><span class="eyebrow" data-i18n="signal.eyebrow">LESS FRICTION. MORE CONVERSATION.</span><span class="section-number" aria-hidden="true">01 —</span></div>
+        <div class="signal-heading"><h2 id="signal-title" data-i18n="signal.title">Make room for<br>what matters.</h2><p data-i18n="signal.description">Keep the character of your voice. Tame background noise, shape the tone, and find a comfortable level before your next call.</p></div>
+        <div class="signal-art" aria-hidden="true"><img src="assets/signal.svg" alt="" width="960" height="300"><span class="signal-start">INPUT</span><span class="signal-end">VOICE</span></div>
+        <p class="signal-disclaimer" data-i18n="signal.disclaimer">Decorative signal illustration — not a measured before-and-after comparison.</p>
+        <div class="signal-chain"><div><span class="chain-index">01</span><h3 data-i18n="signal.noise.title">Less background</h3><p data-i18n="signal.noise.body">RNNoise suppresses background noise locally, helping speech take the foreground.</p></div><div><span class="chain-index">02</span><h3 data-i18n="signal.eq.title">Your kind of clarity</h3><p data-i18n="signal.eq.body">Adjust the equalizer to shape your voice. Keep control of the sound that feels right to you.</p></div><div><span class="chain-index">03</span><h3 data-i18n="signal.level.title">A level you can see</h3><p data-i18n="signal.level.body">Set your output volume and watch the real level meter, so you can spot peaks before a call.</p></div></div>
+      </div>
+    </section>
+
+    <section class="how-section wrap" id="how-it-works" aria-labelledby="how-title">
+      <div class="section-top"><span class="eyebrow" data-i18n="how.eyebrow">FROM PLUGGED IN TO READY TO TALK</span><span class="section-number" aria-hidden="true">02 —</span></div>
+      <div class="how-layout"><div class="how-intro"><h2 id="how-title" data-i18n="how.title">A small setup.<br>A calmer call.</h2><p data-i18n="how.intro">Vozena creates a processed microphone for your calling app. You choose the sound; your desktop does the rest.</p><a class="text-link" href="#installation"><span data-i18n="how.setup">Read the setup steps</span><span aria-hidden="true">↗</span></a></div>
+        <ol class="steps"><li><span class="step-number" aria-hidden="true">01</span><div><h3 data-i18n="how.one.title">Connect your Yeti</h3><p data-i18n="how.one.body">Open Vozena with your classic USB Blue Yeti connected. Keep its gain and pickup pattern on the microphone’s physical controls.</p></div></li><li><span class="step-number" aria-hidden="true">02</span><div><h3 data-i18n="how.two.title">Find your sound</h3><p data-i18n="how.two.body">Run a guided 10-second calibration. Review the suggested settings and apply them when you’re ready. Listen to an A/B sample if you want.</p></div></li><li><span class="step-number" aria-hidden="true">03</span><div><h3 data-i18n="how.three.title">Activate, then choose “Yeti Processado”</h3><p data-i18n="how.three.body">Click “Ativar tratamento” in Vozena, then select “Yeti Processado” in your meeting app’s audio settings. Leave Vozena running in the tray and get on with the conversation.</p></div></li></ol>
+      </div>
+    </section>
+
+    <section class="details-section wrap" aria-labelledby="details-title">
+      <div class="details-heading"><div><span class="eyebrow" data-i18n="details.eyebrow">THOUGHTFUL, DOWN TO THE DETAILS</span><h2 id="details-title" data-i18n="details.title">Control, without<br>the clutter.</h2></div><p data-i18n="details.intro">Useful tools for your microphone, in one quiet corner of your desktop.</p></div>
+      <div class="feature-grid">
+        <article class="feature"><span class="feature-icon" aria-hidden="true">10<span>s</span></span><h3 data-i18n="details.calibrate.title">A little guidance</h3><p data-i18n="details.calibrate.body">A 10-second calibration proposes settings for your voice and room. Suggestions stay suggestions until you explicitly apply them.</p></article>
+        <article class="feature"><span class="feature-icon feature-ab" aria-hidden="true">A<span>/</span>B</span><h3 data-i18n="details.listen.title">Hear the difference yourself</h3><p data-i18n="details.listen.body">Record a short 10-second sample and compare unprocessed and processed audio. The sample lives only in memory, never in a saved recording.</p></article>
+        <article class="feature"><svg class="feature-svg" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M19 25v-9a5 5 0 0 1 10 0v9m-15-3v3a10 10 0 0 0 16 8m-6 2v7m-6 0h12M9 8l30 32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg><h3 data-i18n="details.mute.title">A mute within reach</h3><p data-i18n="details.mute.body">Mute from the tray or use a global keyboard shortcut on KDE. Stay in your conversation without hunting for a window.</p></article>
+        <article class="feature"><svg class="feature-svg" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M37 19a14 14 0 0 0-25-4m-1-7v8h8m-8 13a14 14 0 0 0 25 4m1 7v-8h-8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg><h3 data-i18n="details.reconnect.title">Unplug. Plug back in.</h3><p data-i18n="details.reconnect.body">Automatic reconnection brings your microphone back after it disconnects, keeping everyday setup a little simpler.</p></article>
+      </div>
+    </section>
+
+    <section class="compatibility-section" id="compatibility" aria-labelledby="compatibility-title"><div class="wrap compatibility-layout"><div class="compatibility-copy"><span class="eyebrow" data-i18n="compatibility.eyebrow">BUILT FOR LINUX. HONEST ABOUT THE DETAILS.</span><h2 id="compatibility-title" data-i18n="compatibility.title">A clear starting point.</h2><p data-i18n="compatibility.intro">Vozena is a first public preview, built and tested around one real desktop and microphone. Here’s exactly where it stands.</p><div class="tested"><span class="tested-label" data-i18n="compatibility.tested">VALIDATED SETUP</span><strong>Fedora 44 · KDE Plasma</strong><span>PipeWire 1.6.9 · x86_64</span><span data-i18n="compatibility.hardware">Classic USB Blue Yeti</span></div><p data-i18n="compatibility.languages">App interface: Portuguese. Documentation: English and Portuguese.</p><p class="compatibility-limit" data-i18n="compatibility.limit">Other Linux distributions, desktops, and microphones have not yet been verified. The global shortcut is KDE-only. Windows and macOS are not supported.</p></div><div class="privacy-panel"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><rect x="13" y="21" width="22" height="20" rx="4" stroke="currentColor" stroke-width="2"/><path d="M18 21v-7a6 6 0 0 1 12 0v7m-6 8v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><h3 data-i18n="privacy.title">Your microphone.<br>Your computer.</h3><p data-i18n="privacy.body">Audio processing happens locally. Vozena does not send your audio to a cloud service.</p><ul><li data-i18n="privacy.account">No account or login</li><li data-i18n="privacy.telemetry">No telemetry</li><li data-i18n="privacy.subscription">No subscription</li><li data-i18n="privacy.recording">A/B samples kept only in memory</li></ul><p class="privacy-footnote" data-i18n="privacy.footnote">Your meeting app still follows its own audio and privacy settings.</p></div></div></section>
+
+    <section class="download-section wrap" id="installation" aria-labelledby="download-title"><div class="download-intro"><span class="eyebrow" data-i18n="download.eyebrow">YOUR NEXT CALL STARTS HERE</span><h2 id="download-title" data-i18n="download.title">Meet your new<br>mic companion.</h2><p data-i18n="download.body">Start with the v0.4.0 preview. You’ll need Fedora 44 x86_64, Python 3.11 or newer, and the tested microphone. Follow the source installation instructions.</p><a class="button button-dark" href="https://github.com/caiolombello/vozena/releases/latest"><span data-i18n="download.button">Download the latest release</span><span aria-hidden="true">↗</span></a><span class="release-note" data-i18n="download.note">Linux · Source release · GPL-3.0-or-later</span></div><div class="install-panel"><div class="install-panel-top"><span data-i18n="install.title">GETTING STARTED</span><span aria-hidden="true">↙</span></div><ol><li><strong data-i18n="install.one.title">Download and verify</strong><p data-i18n="install.one.body">Download vozena-0.4.0-source.tar.gz and SHA256SUMS from the release page. Verify the archive’s checksum before extracting it.</p><code>sha256sum --check SHA256SUMS</code></li><li><strong data-i18n="install.two.title">Prepare your desktop</strong><p data-i18n="install.two.body">From the extracted folder, run the setup below. It installs verified audio dependencies and a dedicated Python runtime without opening the app or recording audio.</p><code>python3 scripts/prepare.py</code></li><li><strong data-i18n="install.three.title">Open Vozena</strong><p data-i18n="install.three.body">Connect your Yeti and launch the app. Click “Ativar tratamento”, then select “Yeti Processado” in your calling app.</p><code>~/.local/bin/vozena</code></li></ol><a class="text-link" href="https://github.com/caiolombello/vozena#install-from-a-release"><span data-i18n="install.guide">Full installation guide</span><span aria-hidden="true">↗</span></a></div></section>
+
+    <section class="faq-section wrap" aria-labelledby="faq-title"><div><span class="eyebrow" data-i18n="faq.eyebrow">A FEW GOOD QUESTIONS</span><h2 id="faq-title" data-i18n="faq.title">Before you<br>plug in.</h2></div><div class="faq-list"><details><summary data-i18n="faq.native.q">Is this a native app or a browser tool?</summary><p data-i18n="faq.native.a">Vozena is a native Linux desktop app. It uses PipeWire to provide a processed virtual microphone named “Yeti Processado” that you can choose in your calling app. This website never accesses your microphone.</p></details><details><summary data-i18n="faq.blue.q">Is this an official Blue or Logitech app?</summary><p data-i18n="faq.blue.a">No. Vozena is an independent open-source project, developed with a classic USB Blue Yeti. Blue Yeti and Logitech are trademarks of their respective owners. Microphone gain and pickup pattern stay on the hardware’s physical controls.</p></details><details><summary data-i18n="faq.audio.q">Does it record or upload my conversations?</summary><p data-i18n="faq.audio.a">Vozena processes microphone audio locally and does not upload it. The optional A/B tool records a short 10-second sample only in memory for you to listen back. It is not a conversation recorder.</p></details><details><summary data-i18n="faq.calls.q">Will it work with my meeting app?</summary><p data-i18n="faq.calls.a">Enable “Ativar tratamento” in Vozena, then choose “Yeti Processado” in an app that accepts PipeWire audio inputs. Support in your particular meeting app is not guaranteed by the tested desktop setup. Check its input settings and make a test call.</p></details><details><summary data-i18n="faq.echo.q">Does it remove echo or every background sound?</summary><p data-i18n="faq.echo.a">Vozena uses RNNoise for noise suppression. Results depend on your room, microphone position, and settings. It does not provide echo cancellation, and no filter can promise to remove every sound.</p></details><details><summary data-i18n="faq.preview.q">What does “preview” mean?</summary><p data-i18n="faq.preview.a">v0.4.0 is the first public release, tested on the setup listed above. It is a preview for people comfortable installing a Linux app from source and reporting issues. Broader compatibility still needs testing.</p></details></div></section>
+
+    <section class="open-section wrap" aria-labelledby="open-title"><div><span class="eyebrow" data-i18n="open.eyebrow">A SMALL APP. AN OPEN INVITATION.</span><h2 id="open-title" data-i18n="open.title">Better, together.</h2><p data-i18n="open.body">Read the code, report what you find, or help test another Linux setup. Vozena is open source, and there’s room for your voice here too.</p></div><a class="button button-outline" href="https://github.com/caiolombello/vozena"><span data-i18n="open.button">Explore on GitHub</span><span aria-hidden="true">↗</span></a></section>
+  </main>
+  <footer class="footer wrap"><div><a class="brand" href="#" aria-label="Vozena home" data-i18n-aria="home"><img src="assets/vozena-mark.svg" width="30" height="30" alt=""><span>vozena<span class="brand-dot">.</span></span></a><p data-i18n="footer.tagline">A little clarity. A little calm.</p></div><div class="footer-links"><a href="https://github.com/caiolombello/vozena" data-i18n="footer.code">Source code</a><a href="https://github.com/caiolombello/vozena/issues" data-i18n="footer.issues">Report an issue</a><a href="https://github.com/caiolombello/vozena/blob/main/LICENSE">GPL-3.0-or-later</a></div><p class="footer-disclaimer" data-i18n="footer.disclaimer">An independent project. Not affiliated with Blue or Logitech.</p></footer>
+</body>
+</html>
