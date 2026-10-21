@@ -1,24 +1,25 @@
+<div align="center">
+
 # Vozena
 
-Native, local voice processing for the classic USB Blue Yeti on Linux calls.
+**Real-time voice processing for Linux.**  
+Built for clean speech, reliable virtual audio devices, and clear local control.
 
-![Vozena desktop app](site/assets/app.webp)
+[![CI](https://github.com/caiolombello/vozena/actions/workflows/ci.yml/badge.svg)](https://github.com/caiolombello/vozena/actions/workflows/ci.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](LICENSE)
 
-Vozena creates a PipeWire virtual microphone named **Yeti Processado**. It combines an 80 Hz high-pass filter, RNNoise suppression, gentle voice EQ, compression, software gain, and peak limiting. Choose that virtual microphone in your calling app and keep Vozena running while you talk.
+</div>
 
-Audio processing stays on your computer. Vozena has no network server, account, cloud processing, or telemetry. The optional voice comparison records one 10-second original/processed pair only after you click record, keeps it in RAM, never plays it automatically, and deletes it when you discard it or close the app.
-
-[Português do Brasil](docs/README.pt-BR.md) · [Website](https://caiolombello.github.io/vozena/) · [Releases](https://github.com/caiolombello/vozena/releases)
-
-## Current scope
+---
 
 Vozena v0.4.1 is a public preview. It has been validated on:
 
 - Fedora 44 x86_64
+- Ubuntu 26.04 x86_64
 - KDE Plasma with PipeWire 1.6.9
 - the classic USB Blue Yeti (`USB b58e:9e84`)
 
-Other Linux distributions, desktop environments, architectures, PipeWire versions, and microphones have not been validated. The pinned Fedora LSP build requires glibc 2.43, so the bootstrap is intentionally limited to Fedora 44 x86_64. Windows and macOS are not supported.
+Other Linux distributions, desktop environments, architectures, PipeWire versions, and microphones have not been validated. The pinned Fedora LSP build requires glibc 2.43, so the bootstrap is intentionally limited to Fedora 44 and Ubuntu 26.04 x86_64. Windows and macOS are not supported.
 
 The native interface is currently in Brazilian Portuguese. This guide includes its exact labels where you need to find a control.
 
@@ -28,14 +29,23 @@ Vozena does not provide echo cancellation and cannot promise to remove every bac
 
 The release is a clean source archive. It contains no vendored `.deps`, virtual environment, plugin binary, or Python wheel. Preparation therefore needs a network connection to download pinned files from GitHub, Fedora, and PyPI.
 
-1. Install the Fedora prerequisites:
+1. Install the system prerequisites:
+
+   **On Fedora 44:**
 
    ```bash
    sudo dnf install python3 python3-pip pipewire pipewire-utils rpm cpio systemd \
      libsndfile libatomic libstdc++ xcb-util-cursor
    ```
 
-   A normal Fedora 44 KDE installation already supplies the remaining Qt display libraries used by the app.
+   **On Ubuntu 26.04:**
+
+   ```bash
+   sudo apt install python3 python3-pip python3-venv pipewire pipewire-bin cpio systemd \
+     libsndfile1 libatomic1 libstdc++6 libxcb-cursor0 rpm2cpio
+   ```
+
+   A normal Fedora 44 or Ubuntu 26.04 KDE installation already supplies the remaining Qt display libraries used by the app.
 
 2. In a browser, download `vozena-0.4.1-source.tar.gz` and `SHA256SUMS` from the [v0.4.1 release](https://github.com/caiolombello/vozena/releases/tag/v0.4.1). Put both files in the same directory, then verify the archive before extracting it:
 
@@ -71,10 +81,9 @@ python3 scripts/prepare.py --check
 
 ## Install from a Git checkout
 
-Install the same Fedora prerequisites, then:
+Install the system prerequisites for your distribution (Fedora or Ubuntu) as shown above, then:
 
 ```bash
-sudo dnf install git
 git clone https://github.com/caiolombello/vozena.git
 cd vozena
 python3 scripts/prepare.py
@@ -83,33 +92,59 @@ python3 scripts/prepare.py
 
 Preparation options for development and CI are documented by `python3 scripts/prepare.py --help`. `--plugins-only` prepares only the pinned native plugins, `--root` selects another source checkout, and `--venv-dir` selects an absolute persistent runtime directory.
 
-## Use
+## First setup
 
-1. Connect the classic USB Blue Yeti and open Vozena. The app starts paused.
-2. Adjust noise reduction (**Redução de ruído**), voice clarity (**Clareza da voz**), and software volume (**Volume da voz**), or choose a preset (**Perfil**).
-3. Optionally open calibration (**Calibrar**) and run the guided 10-second capture: stay quiet for 3 seconds, speak normally for 7 seconds, review the suggestion, then click **Aplicar ajustes**. Calibration never applies a suggestion on its own.
-4. Click **Ativar tratamento**.
-5. Select **Yeti Processado** as the microphone in the calling app.
+1. Plug in your Blue Yeti and set the physical polar pattern switch on the back to **Cardioid** (the icon shaped like a heart).
+2. Adjust the physical gain knob on the back so your loudest speech never distorts.
+3. Open Vozena and click **Ativar tratamento**.
+4. In your calling app (Discord, Google Meet, Teams, Zoom, Slack, Telegram, OBS Studio), choose **Yeti Processado** as the microphone.
+5. In that same app, turn off any built-in noise suppression and automatic gain control if possible, so two algorithms do not compete.
 
-Vozena reconnects its owned PipeWire graph after the Yeti, PipeWire, or the computer returns. On KDE, `Meta+Shift+M` toggles mute when that shortcut is available. Closing the window keeps processing in the system tray when a tray is available; use the tray menu to quit.
+## Daily usage
 
-Settings are stored at `~/.config/yeti-voice/settings.json`. The internal Python package and local data paths retain the `yeti_voice` and `yeti-voice` names so existing installations remain compatible.
+- **Tray icon**: closing the main window leaves Vozena running in the system tray. Use the tray icon to reopen the controls or quit.
+- **Global mute shortcut**: press <kbd>Meta</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> anywhere on the desktop to toggle mute. You can reassign it at any time in **KDE System Settings → Shortcuts → Vozena**.
+- **Quick controls**:
+  - **Suavização de ruído**: adjust between softer room noise and stronger suppression.
+  - **Portão de ruído**: sets the threshold where background sound is silenced.
+  - **Volume de saída**: fine adjustment for processed speech.
+  - **Testar voz**: record a short test phrase in memory, listen to the original vs. treated version, and apply calibrated settings.
+- **Microphone disconnection**: if you unplug the Blue Yeti, Vozena automatically pauses and releases the device. Reconnect it and click **Reconectar**.
 
 ## Uninstall
 
-Close Vozena, preview the owned paths that would be removed, then uninstall:
+To remove the application, the desktop entry, and the launcher without touching your configuration or settings:
 
 ```bash
-python3 scripts/uninstall.py --dry-run
 python3 scripts/uninstall.py
 ```
 
-The uninstaller checks Vozena's ownership markers and refuses to continue while an app instance is open. It removes the managed app releases, desktop entry, and primary and compatibility launchers. It preserves `~/.config/yeti-voice/settings.json` and the reusable runtime under `~/.local/share/vozena/runtime/`.
+Settings remain at `~/.config/yeti-voice/settings.json` and the isolated Python runtime remains at `~/.local/share/vozena/runtime/`.
 
-## Contributing and security
+## Architecture
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the local test commands and project boundaries. Please report security problems through [GitHub's private vulnerability form](https://github.com/caiolombello/vozena/security/advisories/new), not a public issue.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ Blue Yeti (ALSA / PipeWire hardware node)                              │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ PipeWire Filter Chain: vozena-yeti-sink                                │
+│   ├─ LADSPA noise suppression (RNNoise v1.10)                          │
+│   ├─ LADSPA gate (LSP Plugins v1.2.29)                                 │
+│   └─ LADSPA limiter (LSP Plugins v1.2.29)                              │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ Virtual Source: Yeti Processado                                        │
+│   └─ selected by meeting applications                                  │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
-Vozena is licensed under [GPL-3.0-or-later](LICENSE). Downloaded dependencies retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The audio pipeline runs entirely on your system through local LADSPA plugins loaded into PipeWire. No audio stream is sent over the network.
 
-Vozena is an independent open-source project and is not affiliated with or endorsed by Blue or Logitech. Blue Yeti and Logitech are trademarks of their respective owners.
+## Contributing
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md) before submitting pull requests or issue reports.

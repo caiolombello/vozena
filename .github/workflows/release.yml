@@ -26,7 +26,7 @@ jobs:
       - name: Validate tag and build clean source archive
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: |
+        run: |\
           python3 - <<'PY'
           import ast
           import os
@@ -66,7 +66,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: |
+        run: |\
           cd dist
           sha256sum --check SHA256SUMS
           if gh release view "$RELEASE_TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
@@ -80,5 +80,5 @@ jobs:
           else
             gh release create "$RELEASE_TAG" vozena-*-source.tar.gz SHA256SUMS \
               --repo "$GH_REPO" --verify-tag --title "Vozena $RELEASE_TAG" \
-              --notes 'Source release for Fedora 44 x86_64. Third-party binaries are downloaded separately from verified upstream archives. See README.md for installation and SHA256SUMS for asset integrity.'
+              --notes 'Source release for Fedora 44 and Ubuntu 26.04 x86_64. Third-party binaries are downloaded separately from verified upstream archives. See README.md for installation and SHA256SUMS for asset integrity.'
           fi
