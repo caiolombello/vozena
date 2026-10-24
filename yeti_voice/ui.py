@@ -798,8 +798,7 @@ class MainWindow(QMainWindow):
         if not self._has_active_contract:
             self._active = self._running
         self._refresh_engine_state()
-        if not self._running:
-            self._reset_meter()
+        self._reset_meter()
 
     def _set_active(self, active):
         self._active = bool(active)

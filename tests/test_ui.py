@@ -266,6 +266,12 @@ class MainWindowTest(unittest.TestCase):
         self.controller.monitoring_changed.emit(False)
         self.assertEqual(self.window.monitor_button.text(), "Ouvir ao vivo")
 
+    def test_meter_help_follows_activation_before_the_first_reading(self):
+        self.controller.running_changed.emit(True)
+        self.assertEqual(self.window.meter_help.text(), "Fale normalmente para acompanhar sua voz.")
+        self.controller.running_changed.emit(False)
+        self.assertEqual(self.window.meter_help.text(), "Ative o tratamento para acompanhar sua voz.")
+
     def test_level_meter_follows_window_visibility(self):
         self.assertEqual(self.controller.meter_wanted, [False])
         self.window.show()
