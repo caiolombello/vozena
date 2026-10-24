@@ -56,12 +56,13 @@ def validate_profile_name(name):
 @dataclass(frozen=True)
 class Preferences:
     activate_on_launch: bool = False
+    warn_when_muted: bool = True
     # Input configured before "Yeti Processado" became the system default.
     previous_default_source: str = ""
     profiles: tuple = ()  # ((name, Settings), ...) in the user's order
 
     def __post_init__(self):
-        if type(self.activate_on_launch) is not bool:
+        if type(self.activate_on_launch) is not bool or type(self.warn_when_muted) is not bool:
             raise ValueError("Preferência inválida")
         if not isinstance(self.previous_default_source, str):
             raise ValueError("Microfone anterior inválido")
@@ -90,6 +91,7 @@ class Preferences:
     def to_dict(self):
         return {
             "activate_on_launch": self.activate_on_launch,
+            "warn_when_muted": self.warn_when_muted,
             "previous_default_source": self.previous_default_source,
             "profiles": [{"name": name, **settings.to_dict()} for name, settings in self.profiles],
         }
@@ -103,6 +105,7 @@ class Preferences:
             raise ValueError("Perfis inválidos")
         return cls(
             activate_on_launch=values.get("activate_on_launch", False),
+            warn_when_muted=values.get("warn_when_muted", True),
             previous_default_source=values.get("previous_default_source", ""),
             profiles=tuple((item.get("name"), Settings.from_dict(item)) for item in profiles),
         )

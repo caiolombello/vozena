@@ -34,6 +34,7 @@ class FakeController(QObject):
         self.device_description = "Blue Yeti (teste)"
         self.calls = []
         self.meter_wanted = []
+        self.mute_watch = []
 
     def start(self, settings):
         self.calls.append(("start", settings))
@@ -56,6 +57,9 @@ class FakeController(QObject):
     def set_default_source(self, name):
         self.calls.append(("default_source", name))
         return True
+
+    def set_mute_watch_enabled(self, enabled):
+        self.mute_watch.append(enabled)
 
     def stop(self):
         self.calls.append(("stop",))
@@ -188,6 +192,18 @@ class MainWindowTest(unittest.TestCase):
         self.assertEqual(sum(call[0] == "start" for call in self.controller.calls), 1)
         self.window.activate_check.click()
         self.assertFalse(saved[-1].activate_on_launch)
+
+    def test_talking_while_muted_warning_can_be_turned_off(self):
+        saved = []
+        self.window.close()
+        self.controller.mute_watch.clear()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append,
+                                 preferences=Preferences(warn_when_muted=False), save_preferences=saved.append)
+        self.assertEqual(self.controller.mute_watch, [False])
+        self.assertFalse(self.window.warn_muted_check.isChecked())
+        self.window.warn_muted_check.click()
+        self.assertEqual(self.controller.mute_watch, [False, True])
+        self.assertTrue(saved[-1].warn_when_muted)
 
     def test_level_meter_follows_window_visibility(self):
         self.assertEqual(self.controller.meter_wanted, [False])

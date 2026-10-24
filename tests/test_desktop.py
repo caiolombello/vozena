@@ -18,6 +18,7 @@ class Controller(QObject):
     running_changed = Signal(bool)
     active_changed = Signal(bool)
     muted_changed = Signal(bool)
+    talking_while_muted = Signal()
 
     def __init__(self):
         super().__init__()
@@ -52,10 +53,47 @@ class Bus:
         return True
 
 
+class Osd:
+    def __init__(self, available=True):
+        self.shown, self.available = [], available
+
+    def show(self, icon, text):
+        self.shown.append((icon, text))
+        return self.available
+
+
 class DesktopTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_mute_changes_from_shortcut_or_tray_show_plasma_osd(self):
+        controller, voice, window = Controller(), VoiceTest(), QWidget()
+        osd = Osd()
+        controller.active = controller.running = True
+        desktop = DesktopIntegration(window, controller, voice, tray_available=False, osd=osd)
+        desktop.toggle_mute()
+        desktop.toggle_mute()
+        self.assertEqual(osd.shown, [("microphone-sensitivity-muted", "Yeti Processado silenciado"),
+                                     ("microphone-sensitivity-high", "Yeti Processado ativo")])
+        controller.active = False
+        controller.set_mute(False)
+        self.assertEqual(len(osd.shown), 2)
+        desktop.close()
+
+    def test_talking_while_muted_warns_through_the_tray(self):
+        controller, voice, window = Controller(), VoiceTest(), QWidget()
+        desktop = DesktopIntegration(window, controller, voice, tray_available=True, osd=Osd(False))
+        desktop.set_shortcut("Meta+Shift+M")
+        messages = []
+        desktop.tray.showMessage = lambda *args: messages.append(args)
+        controller.talking_while_muted.emit()
+        self.assertEqual(messages[0][0], "Microfone silenciado")
+        self.assertIn("Meta+Shift+M", messages[0][1])
+        controller.active = True
+        controller.set_mute(True)
+        self.assertEqual(messages[-1][1], "Yeti Processado silenciado")
+        desktop.close()
 
     def test_paused_mute_command_never_activates_audio(self):
         controller, voice, window = Controller(), VoiceTest(), QWidget()

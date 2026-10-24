@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QTimer, Slot, SLOT
-from PySide6.QtDBus import QDBusConnection
+from PySide6.QtDBus import QDBusConnection, QDBusMessage
 from PySide6.QtGui import QColor, QIcon, QPainter
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
@@ -129,12 +129,32 @@ class SuspendMonitor(QObject):
         )
 
 
+class PlasmaOsd:
+    """Plasma's own on-screen display, the one used for its microphone keys."""
+
+    def __init__(self, bus=None):
+        self._bus = bus or QDBusConnection.sessionBus()
+
+    def show(self, icon, text):
+        interface = self._bus.interface() if self._bus.isConnected() else None
+        if interface is None or not interface.isServiceRegistered("org.kde.plasmashell").value():
+            return False
+        message = QDBusMessage.createMethodCall(
+            "org.kde.plasmashell", "/org/kde/osdService", "org.kde.osdService", "showText")
+        message.setArguments([icon, text])
+        return self._bus.send(message)
+
+
 class DesktopIntegration(QObject):
-    def __init__(self, window, controller, voice_test, parent=None, *, tray_available=None):
+    def __init__(self, window, controller, voice_test, parent=None, *, tray_available=None, osd=None):
         super().__init__(parent)
         self.window = window
         self.controller = controller
         self.voice_test = voice_test
+        self._osd = osd
+        controller.muted_changed.connect(self._announce_mute)
+        if hasattr(controller, "talking_while_muted"):
+            controller.talking_while_muted.connect(self._warn_talking)
         self._quitting = False
         self._shortcut = ""
         self._base_icon = QApplication.windowIcon()
@@ -183,6 +203,28 @@ class DesktopIntegration(QObject):
             return False
         self.controller.set_mute(not self.controller.muted)
         return True
+
+    def _notify(self, title, text, warning=False):
+        if self.tray is not None:
+            icon = QSystemTrayIcon.MessageIcon.Warning if warning else QSystemTrayIcon.MessageIcon.Information
+            self.tray.showMessage(title, text, icon, 6000 if warning else 2500)
+
+    def _announce_mute(self, muted):
+        # The shortcut and tray change mute while another window has focus.
+        if not self.controller.active or self.window.isActiveWindow():
+            return
+        text = "Yeti Processado silenciado" if muted else "Yeti Processado ativo"
+        icon = "microphone-sensitivity-muted" if muted else "microphone-sensitivity-high"
+        if not (self._osd and self._osd.show(icon, text)):
+            self._notify("Vozena", text)
+
+    def _warn_talking(self):
+        hint = f" Use {self._shortcut} para reativar." if self._shortcut else ""
+        text = "Você está falando, mas o Yeti Processado está silenciado." + hint
+        if self.tray is not None:
+            self._notify("Microfone silenciado", text, warning=True)
+        elif self._osd:
+            self._osd.show("microphone-sensitivity-muted", "Você está falando com o microfone silenciado")
 
     def set_shortcut(self, label):
         self._shortcut = label

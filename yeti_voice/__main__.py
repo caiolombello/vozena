@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from . import __version__
 from .engine import VoiceController, check_dependencies, find_yeti, graph_snapshot
-from .desktop import CommandServer, DesktopIntegration, SuspendMonitor, runtime_directory, send_command
+from .desktop import CommandServer, DesktopIntegration, PlasmaOsd, SuspendMonitor, runtime_directory, send_command
 from .processing import ROOT
 from .storage import load_preferences, load_settings, save_preferences, save_settings
 from .shortcuts import GlobalShortcut
@@ -82,7 +82,7 @@ def main():
                         autostart=None if options.render else SessionAutostart())
     desktop = commands = sleep_monitor = shortcut = None
     if not options.render:
-        desktop = DesktopIntegration(window, controller, voice_test, app)
+        desktop = DesktopIntegration(window, controller, voice_test, app, osd=PlasmaOsd())
         try:
             commands = CommandServer(desktop.command, app)
         except OSError as error:

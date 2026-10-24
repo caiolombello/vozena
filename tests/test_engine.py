@@ -198,3 +198,62 @@ class GraphUsageTests(unittest.TestCase):
             '{"name": "yeti_voice.processed"}', "Spa:String:JSON"]))
         self.assertEqual(start.call_args_list[1].args, ("pw-metadata", [
             "-n", "default", "-d", "0", "default.configured.audio.source"]))
+
+
+class MuteWatchTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        with patch.object(VoiceController, "refresh"):
+            self.controller = VoiceController(meter_enabled=False)
+        self.controller._refresh_timer.stop()
+        self.controller._running = self.controller._active = True
+        self.controller._source = "alsa_input.usb-yeti"
+
+    def tearDown(self):
+        with patch.object(VoiceController, "refresh"):
+            self.controller.stop()
+        self.controller._refresh_timer.stop()
+
+    def test_passive_watch_runs_only_while_muted_in_a_meeting(self):
+        watch = self.controller._mute_watch
+        launches = []
+
+        def launch(program, arguments=()):
+            launches.append((program, list(arguments)))
+            PipeWireProcess.start(watch, "sleep", ["5"])
+
+        with patch.object(watch, "start", side_effect=launch), \
+                patch.object(self.controller, "_push_parameters"):
+            self.controller.set_mute(True)
+            self.assertEqual(launches, [])
+            self.controller._publish_usage(graph(links=[(10, 11, "active")]))
+            self.assertEqual(len(launches), 1)
+            program, arguments = launches[0]
+            self.assertEqual(program, "pw-cat")
+            self.assertIn("--target=alsa_input.usb-yeti", arguments)
+            properties = next(argument for argument in arguments if argument.startswith("--properties="))
+            self.assertIn("node.passive = true", properties)
+            self.assertIn('node.name = "yeti_voice.mute-watch"', properties)
+            self.assertNotEqual(watch.state(), QProcess.ProcessState.NotRunning)
+            self.controller.set_mute(False)
+            self.assertEqual(watch.state(), QProcess.ProcessState.NotRunning)
+            self.controller.set_mute(True)
+            self.assertEqual(len(launches), 2)
+            self.controller.set_mute_watch_enabled(False)
+            self.assertEqual(watch.state(), QProcess.ProcessState.NotRunning)
+
+    def test_talking_alert_is_rate_limited(self):
+        alerts = []
+        self.controller.talking_while_muted.connect(lambda: alerts.append(True))
+        self.controller._muted = True
+        with patch.object(self.controller._mute_watch, "readAllStandardOutput", return_value=b"pcm"), \
+                patch.object(self.controller._speech, "feed", return_value=True):
+            self.controller._read_mute_watch()
+            self.controller._read_mute_watch()
+            self.assertEqual(len(alerts), 1)
+            self.controller._last_talk_alert -= 31
+            self.controller._read_mute_watch()
+        self.assertEqual(len(alerts), 2)

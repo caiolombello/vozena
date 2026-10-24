@@ -128,6 +128,9 @@ class MainWindow(QMainWindow):
             self._set_voice_state(voice_test.state)
             self._set_voice_progress(0)
         self._update_meter_demand()
+        set_mute_watch = getattr(controller, "set_mute_watch_enabled", None)
+        if set_mute_watch is not None:
+            set_mute_watch(self._preferences.warn_when_muted)
 
     def _update_meter_demand(self):
         set_wanted = getattr(self._controller, "set_meter_wanted", None)
@@ -563,9 +566,22 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._label(
             "O Yeti só capta áudio quando um app usa o Yeti Processado ou quando esta janela está "
             "aberta. Se ele estiver desconectado, o tratamento começa assim que for conectado."))
+        self.warn_muted_check = QCheckBox("Avisar quando eu falar com o microfone silenciado")
+        self.warn_muted_check.setChecked(self._preferences.warn_when_muted)
+        self.warn_muted_check.toggled.connect(self._set_warn_when_muted)
+        layout.addWidget(self.warn_muted_check)
+        layout.addWidget(self._label(
+            "Só durante reuniões: o Vozena escuta o Yeti apenas enquanto o app de reunião já está "
+            "usando o microfone, e nada é gravado."))
         page.addWidget(card)
         page.addStretch()
         self._refresh_autostart()
+
+    def _set_warn_when_muted(self, enabled):
+        self._update_preferences(warn_when_muted=bool(enabled))
+        set_enabled = getattr(self._controller, "set_mute_watch_enabled", None)
+        if set_enabled is not None:
+            set_enabled(bool(enabled))
 
     def _refresh_autostart(self):
         available = self._autostart is not None and self._autostart.available()

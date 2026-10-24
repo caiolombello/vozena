@@ -40,7 +40,7 @@ class PreferencesTests(unittest.TestCase):
     def test_preferences_and_profiles_survive_restart_in_order(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "preferences.json"
-            expected = (Preferences(activate_on_launch=True,
+            expected = (Preferences(activate_on_launch=True, warn_when_muted=False,
                                     previous_default_source="alsa_input.usb-yeti")
                         .with_profile("  Ventilador   ligado ", Settings(90, 30, 1.5))
                         .with_profile("Quarto silencioso", Settings(30, 20, 0.0)))
