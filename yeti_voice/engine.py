@@ -14,6 +14,13 @@ from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 from .processing import CAPTURE_NODE, OUTPUT_NODE, ROOT, make_config, props_payload, serialize_config
 from .settings import Settings
 
+# pw-cat capture streams that may only read Vozena's own nodes. When an explicit
+# target is also the system default, WirePlumber marks the linked stream to
+# "follow default"; with node.dont-fallback alone, its next rescan destroys the
+# stream ("defined target not found", reproduced with WirePlumber 0.5.13 on
+# Ubuntu 26.04). node.dont-reconnect keeps the stream pinned to its target.
+PINNED_CAPTURE = "--properties={ node.dont-fallback = true node.dont-reconnect = true }"
+
 
 def graph_snapshot():
     """Synchronous diagnostic helper; never called from the controller's UI path."""
@@ -433,7 +440,7 @@ class VoiceController(QObject):
         self._peak = 0.0
         self._meter.start("pw-cat", ["--record", "--raw", "--format=f32", "--rate=48000",
                                      "--channels=1", "--latency=20ms", "--target=" + OUTPUT_NODE,
-                                     "--properties={ node.dont-fallback = true }", "-"])
+                                     PINNED_CAPTURE, "-"])
         self._level_timer.start()
 
     def _read_meter(self):

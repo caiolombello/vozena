@@ -9,7 +9,7 @@ body:
     id: version
     attributes:
       label: Vozena version and Fedora release
-      placeholder: Vozena 0.4.1, Fedora 44 KDE, x86_64
+      placeholder: Vozena 0.4.2, Fedora 44 KDE, x86_64
     validations:
       required: true
   - type: textarea
