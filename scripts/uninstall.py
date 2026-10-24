@@ -11,6 +11,7 @@ import sys
 
 LAUNCHER_MARKER = "# Managed by Yeti Voz installer"
 DESKTOP_MARKER = "X-YetiVoz-Managed=true"
+AUTOSTART_MARKER = "X-Vozena-Autostart=true"
 
 
 def contained(path: Path, home: Path) -> None:
@@ -49,6 +50,11 @@ def uninstall(*, home: Path | None = None, dry_run: bool = False) -> list[Path]:
     desktop = home / ".local/share/applications/yeti-voz.desktop"
     if marked_file(desktop, DESKTOP_MARKER, home):
         planned.append(desktop)
+    config = home / ".config" if custom_home else Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config")))
+    # A login entry pointing at a removed launcher would fail at every login.
+    autostart = config / "autostart/vozena.desktop"
+    if marked_file(autostart, AUTOSTART_MARKER, home):
+        planned.append(autostart)
     if not planned:
         return []
     if not owned_launchers:

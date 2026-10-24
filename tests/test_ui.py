@@ -144,6 +144,51 @@ class MainWindowTest(unittest.TestCase):
         self.assertEqual(self.controller.calls[-1], ("default_source", "alsa_input.usb-yeti"))
         self.assertEqual(saved[-1].previous_default_source, "")
 
+    def test_autostart_toggle_writes_through_and_reflects_failures(self):
+        class Autostart:
+            def __init__(self, available=True):
+                self.state, self._available, self.fail = False, available, False
+            def available(self):
+                return self._available
+            def enabled(self):
+                return self.state
+            def set(self, enabled):
+                if self.fail:
+                    raise FileExistsError("entrada de outro app")
+                self.state = enabled
+        autostart = Autostart()
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append, autostart=autostart)
+        self.window.autostart_check.click()
+        self.assertTrue(autostart.state)
+        self.assertTrue(self.window.autostart_check.isChecked())
+        autostart.fail = True
+        self.window.autostart_check.click()
+        self.assertTrue(self.window.autostart_check.isChecked())
+        self.assertIn("entrada de outro app", self.window.error_label.text())
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append, autostart=Autostart(False))
+        self.assertFalse(self.window.autostart_check.isEnabled())
+        self.assertIn("instalado", self.window.autostart_help.text())
+
+    def test_activation_on_launch_waits_for_the_yeti(self):
+        saved = []
+        self.controller.device_description = ""
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(40, 15, 0.0), self.saved.append,
+                                 preferences=Preferences(activate_on_launch=True), save_preferences=saved.append)
+        self.assertTrue(self.window.activate_check.isChecked())
+        self.window.activate_when_ready()
+        self.assertFalse(any(call[0] == "start" for call in self.controller.calls))
+        self.assertIn("quando o Blue Yeti for conectado", self.window.status_label.text())
+        self.controller.device_changed.emit("Yeti Stereo Microphone")
+        self.assertEqual(self.controller.calls[-1], ("start", Settings(40, 15, 0.0)))
+        self.controller.device_changed.emit("")
+        self.controller.device_changed.emit("Yeti Stereo Microphone")
+        self.assertEqual(sum(call[0] == "start" for call in self.controller.calls), 1)
+        self.window.activate_check.click()
+        self.assertFalse(saved[-1].activate_on_launch)
+
     def test_level_meter_follows_window_visibility(self):
         self.assertEqual(self.controller.meter_wanted, [False])
         self.window.show()

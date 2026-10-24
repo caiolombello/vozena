@@ -55,16 +55,14 @@ def validate_profile_name(name):
 
 @dataclass(frozen=True)
 class Preferences:
-    start_at_login: bool = False
     activate_on_launch: bool = False
     # Input configured before "Yeti Processado" became the system default.
     previous_default_source: str = ""
     profiles: tuple = ()  # ((name, Settings), ...) in the user's order
 
     def __post_init__(self):
-        for name in ("start_at_login", "activate_on_launch"):
-            if type(getattr(self, name)) is not bool:
-                raise ValueError("Preferência inválida")
+        if type(self.activate_on_launch) is not bool:
+            raise ValueError("Preferência inválida")
         if not isinstance(self.previous_default_source, str):
             raise ValueError("Microfone anterior inválido")
         names = []
@@ -91,7 +89,6 @@ class Preferences:
 
     def to_dict(self):
         return {
-            "start_at_login": self.start_at_login,
             "activate_on_launch": self.activate_on_launch,
             "previous_default_source": self.previous_default_source,
             "profiles": [{"name": name, **settings.to_dict()} for name, settings in self.profiles],
@@ -105,7 +102,6 @@ class Preferences:
         if not isinstance(profiles, list) or not all(isinstance(item, dict) for item in profiles):
             raise ValueError("Perfis inválidos")
         return cls(
-            start_at_login=values.get("start_at_login", False),
             activate_on_launch=values.get("activate_on_launch", False),
             previous_default_source=values.get("previous_default_source", ""),
             profiles=tuple((item.get("name"), Settings.from_dict(item)) for item in profiles),

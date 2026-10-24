@@ -9,6 +9,7 @@ from PySide6.QtCore import QEvent, Qt, QSignalBlocker, QTimer
 from PySide6.QtGui import QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -58,8 +59,11 @@ class MainWindow(QMainWindow):
         *,
         preferences: Preferences | None = None,
         save_preferences: Callable[[Preferences], None] | None = None,
+        autostart=None,
     ):
         super().__init__()
+        self._autostart = autostart
+        self._pending_activation = False
         self._controller = controller
         self._settings = settings
         self._save_settings = save_settings
@@ -273,6 +277,7 @@ class MainWindow(QMainWindow):
             comparison_page = self._tab_page("Comparar áudio")
             self._build_voice_test(comparison_page)
             self._build_calibration(calibration_page)
+        self._build_preferences(self._tab_page("Preferências"))
 
         footer = QHBoxLayout()
         self.shortcut_label = self._label("Atalho global: verificando…", "footer")
@@ -541,6 +546,54 @@ class MainWindow(QMainWindow):
         page.addWidget(self.calibration_result_card)
         page.addStretch()
 
+    def _build_preferences(self, page):
+        page.addWidget(self._label("Pronto antes da reunião", "pageTitle"))
+        page.addWidget(self._label("Deixe o Vozena preparado sem precisar abrir a janela.", "intro"))
+        card, layout = self._card()
+        self.autostart_check = QCheckBox("Iniciar o Vozena com o computador")
+        self.autostart_check.toggled.connect(self._set_autostart)
+        layout.addWidget(self.autostart_check)
+        self.autostart_help = self._label("")
+        layout.addWidget(self.autostart_help)
+        self.activate_check = QCheckBox("Ativar o tratamento ao abrir o Vozena")
+        self.activate_check.setChecked(self._preferences.activate_on_launch)
+        self.activate_check.toggled.connect(
+            lambda checked: self._update_preferences(activate_on_launch=bool(checked)))
+        layout.addWidget(self.activate_check)
+        layout.addWidget(self._label(
+            "O Yeti só capta áudio quando um app usa o Yeti Processado ou quando esta janela está "
+            "aberta. Se ele estiver desconectado, o tratamento começa assim que for conectado."))
+        page.addWidget(card)
+        page.addStretch()
+        self._refresh_autostart()
+
+    def _refresh_autostart(self):
+        available = self._autostart is not None and self._autostart.available()
+        with QSignalBlocker(self.autostart_check):
+            self.autostart_check.setChecked(bool(self._autostart and self._autostart.enabled()))
+        self.autostart_check.setEnabled(available or self.autostart_check.isChecked())
+        self.autostart_help.setText(
+            "Ele abre na bandeja, sem mostrar a janela." if available else
+            "Disponível no Vozena instalado pelo menu de aplicativos.")
+
+    def _set_autostart(self, enabled):
+        try:
+            self._autostart.set(bool(enabled))
+        except OSError as error:
+            self._show_error(str(error))
+        self._refresh_autostart()
+
+    def activate_when_ready(self):
+        """Start the treatment now, or as soon as the Yeti is connected."""
+        self._pending_activation = True
+        self._try_pending_activation()
+        self._refresh_engine_state()
+
+    def _try_pending_activation(self):
+        if self._pending_activation and self._device_connected and not self._active:
+            self._pending_activation = False
+            self._controller.start(self._settings)
+
     @staticmethod
     def _add_slider(layout, title, description, minimum, maximum, object_name):
         block = QVBoxLayout()
@@ -624,6 +677,7 @@ class MainWindow(QMainWindow):
         self._controller.update_settings(self._settings)
 
     def _toggle_running(self):
+        self._pending_activation = False
         if self._active:
             self._controller.stop()
         else:
@@ -691,7 +745,8 @@ class MainWindow(QMainWindow):
         if self._running and self._muted:
             text = "Yeti Processado está sem áudio. Reative o microfone quando quiser falar."
         elif not self._device_connected and not self._active:
-            text = "Conecte o Blue Yeti por USB para começar."
+            text = ("O tratamento começa quando o Blue Yeti for conectado." if self._pending_activation
+                    else "Conecte o Blue Yeti por USB para começar.")
         else:
             text = self._status_text or "Pronto para ativar"
         self.status_label.setText(text)
@@ -752,6 +807,7 @@ class MainWindow(QMainWindow):
         self._device_connected = bool(description)
         self.device_label.setText(text)
         self.device_label.setToolTip(text)
+        self._try_pending_activation()
         self._refresh_engine_state()
 
     def _set_level(self, dbfs):
@@ -1074,6 +1130,13 @@ class MainWindow(QMainWindow):
                 border: 1px solid #294b45; border-radius: 10px; }
             QLabel#destination { color: #d0f4ea; font-weight: 600; }
             QLabel#destinationDetail { color: #a9cfc6; font-size: 12px; }
+            QCheckBox { spacing: 10px; font-weight: 600; padding: 2px 0; }
+            QCheckBox::indicator { width: 18px; height: 18px; border-radius: 5px;
+                                   border: 1px solid #4b5d6b; background: #111820; }
+            QCheckBox::indicator:checked { background: #3be0c5; border-color: #3be0c5; }
+            QCheckBox::indicator:focus { border-color: #f1fffb; }
+            QCheckBox::indicator:disabled { background: #1c2630; border-color: #2b3845; }
+            QCheckBox:disabled { color: #82939f; }
             QFrame#destinationCard[tone="inUse"] { background: #163a31; border-color: #3b8b77; }
             QFrame#stepCard[active="true"], QFrame#resultCard { background: #17322d;
                 border: 1px solid #3b8b77; border-radius: 12px; }

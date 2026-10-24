@@ -98,13 +98,13 @@ class MainWindowUxTest(unittest.TestCase):
 
     def test_pages_match_available_tasks_and_navigation_has_no_side_effects(self):
         self.assertEqual(
-            [self.window.pages.tabText(index) for index in range(3)],
-            ["Microfone", "Calibrar", "Comparar áudio"],
+            [self.window.pages.tabText(index) for index in range(self.window.pages.count())],
+            ["Microfone", "Calibrar", "Comparar áudio", "Preferências"],
         )
         self.controller.calls.clear()
         self.voice_test.calls.clear()
 
-        for index in range(3):
+        for index in range(self.window.pages.count()):
             self.window.pages.setCurrentIndex(index)
             QTest.qWait(1)
 
@@ -113,8 +113,8 @@ class MainWindowUxTest(unittest.TestCase):
 
         without_voice = MainWindow(self.controller, Settings(), self.saved.append)
         self.addCleanup(without_voice.close)
-        self.assertEqual(without_voice.pages.count(), 1)
-        self.assertEqual(without_voice.pages.tabText(0), "Microfone")
+        self.assertEqual([without_voice.pages.tabText(index) for index in range(without_voice.pages.count())],
+                         ["Microfone", "Preferências"])
 
     def test_session_header_and_errors_remain_visible_at_minimum_viewport(self):
         self.window.resize(720, 600)
@@ -123,7 +123,7 @@ class MainWindowUxTest(unittest.TestCase):
 
         self.assertFalse(self.window.pages.isAncestorOf(self.window.session_header))
         self.assertFalse(self.window.pages.isAncestorOf(self.window.error_banner))
-        for index in range(3):
+        for index in range(self.window.pages.count()):
             self.window.pages.setCurrentIndex(index)
             for widget in (
                 self.window.session_header,

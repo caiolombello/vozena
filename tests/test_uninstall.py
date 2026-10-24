@@ -61,6 +61,17 @@ class UninstallTests(unittest.TestCase):
         self.assertEqual((self.runtime / "keep").read_text(), "runtime preserved")
         self.assertEqual(sentinel.read_text(), "other app")
 
+    def test_owned_login_entry_is_removed_and_foreign_one_preserved(self):
+        entry = self.home / ".config/autostart/vozena.desktop"
+        entry.parent.mkdir(parents=True)
+        entry.write_text("[Desktop Entry]\n" + uninstaller.AUTOSTART_MARKER + "\n")
+        self.assertIn(entry, uninstaller.uninstall(home=self.home, dry_run=True))
+        uninstaller.uninstall(home=self.home)
+        self.assertFalse(entry.exists())
+        entry.write_text("[Desktop Entry]\nName=Vozena de outra origem\n")
+        self.assertEqual(uninstaller.uninstall(home=self.home, dry_run=True), [])
+        self.assertTrue(entry.exists())
+
     def test_unowned_root_refuses_all_removal(self):
         (self.root / ".yeti-voz-install.json").unlink()
         with self.assertRaisesRegex(ValueError, "Unowned"):

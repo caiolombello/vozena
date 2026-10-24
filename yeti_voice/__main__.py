@@ -15,6 +15,7 @@ from .desktop import CommandServer, DesktopIntegration, SuspendMonitor, runtime_
 from .processing import ROOT
 from .storage import load_preferences, load_settings, save_preferences, save_settings
 from .shortcuts import GlobalShortcut
+from .autostart import SessionAutostart
 from .ui import MainWindow
 from .voice_test import VoiceTestController
 
@@ -28,6 +29,8 @@ def main():
     actions.add_argument("--toggle-mute", action="store_true", help="Alternar silêncio na instância aberta")
     actions.add_argument("--show", action="store_true", help="Mostrar a janela existente")
     actions.add_argument("--status", action="store_true", help="Consultar a instância aberta sem captar áudio")
+    parser.add_argument("--background", action="store_true",
+                        help="Abrir na bandeja, sem mostrar a janela (usado no início automático)")
     options = parser.parse_args()
     if options.diagnose:
         try:
@@ -56,6 +59,8 @@ def main():
         runtime = runtime_directory()
         lock = QLockFile(str(runtime / "yeti-voz.lock"))
         if not lock.tryLock(100):
+            if options.background:
+                return 0
             result = send_command("show")
             if not result.get("ok"):
                 QMessageBox.information(None, "Vozena", result["message"])
@@ -73,7 +78,8 @@ def main():
             controller.error_occurred.emit(f"Não foi possível salvar os ajustes: {error}")
 
     window = MainWindow(controller, settings, persist, voice_test,
-                        preferences=preferences, save_preferences=save_preferences)
+                        preferences=preferences, save_preferences=save_preferences,
+                        autostart=None if options.render else SessionAutostart())
     desktop = commands = sleep_monitor = shortcut = None
     if not options.render:
         desktop = DesktopIntegration(window, controller, voice_test, app)
@@ -99,7 +105,10 @@ def main():
             controller.error_occurred.emit(message)
     app.aboutToQuit.connect(controller.stop)
     app.aboutToQuit.connect(voice_test.close)
-    window.show()
+    if preferences.activate_on_launch and not options.render:
+        window.activate_when_ready()
+    if not (options.background and desktop and desktop.tray):
+        window.show()
     if options.render:
         window.set_shortcut_status("Atalho global: Meta+Shift+M · alternar silêncio do Yeti Processado")
         def render():

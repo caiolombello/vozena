@@ -40,7 +40,7 @@ class PreferencesTests(unittest.TestCase):
     def test_preferences_and_profiles_survive_restart_in_order(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "preferences.json"
-            expected = (Preferences(start_at_login=True, activate_on_launch=True,
+            expected = (Preferences(activate_on_launch=True,
                                     previous_default_source="alsa_input.usb-yeti")
                         .with_profile("  Ventilador   ligado ", Settings(90, 30, 1.5))
                         .with_profile("Quarto silencioso", Settings(30, 20, 0.0)))
@@ -65,8 +65,8 @@ class PreferencesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "preferences.json"
             self.assertEqual(load_preferences(path), (Preferences(), None))
-            path.write_text('{"start_at_login": "yes"}')
+            path.write_text('{"activate_on_launch": "yes"}')
             preferences, warning = load_preferences(path)
             self.assertEqual(preferences, Preferences())
             self.assertTrue(warning)
-            self.assertEqual(path.read_text(), '{"start_at_login": "yes"}')
+            self.assertEqual(path.read_text(), '{"activate_on_launch": "yes"}')
