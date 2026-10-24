@@ -25,7 +25,7 @@ The preparer stores the wrapper's verified license at `.deps/rnnoise/LICENSE` al
 
 The Fedora RPM supplies `COPYING` and `COPYING.LESSER`; the preparer extracts and verifies both under `.deps/lsp/usr/share/licenses/lsp-plugins-ladspa/`.
 
-The pinned LSP binary is built for Fedora 44 x86_64 and requires glibc 2.43. It is verified and supported on Fedora 44 and Ubuntu 26.04 x86_64. It is not presented as a portable binary for older Fedora/Ubuntu releases or other distributions.
+The pinned LSP binary is built for Fedora 44 x86_64 and requires glibc 2.43. It is verified and supported on Fedora 44 and Ubuntu 26.04/26.10 x86_64. It is not presented as a portable binary for older Fedora/Ubuntu releases or other distributions.
 
 ## Python and Qt runtime
 

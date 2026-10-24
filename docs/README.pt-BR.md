@@ -15,11 +15,11 @@ Feito para voz limpa, dispositivos virtuais confiáveis e controle local claro.
 A Vozena v0.4.2 é uma versão pública de prévia. Ela foi validada em:
 
 - Fedora 44 x86_64
-- Ubuntu 26.04 x86_64
+- Ubuntu 26.04 e 26.10 x86_64, incluindo o Kubuntu
 - KDE Plasma com PipeWire 1.6.9
 - Blue Yeti USB clássico (`USB b58e:9e84`)
 
-Outras distribuições Linux, interfaces gráficas, arquiteturas, versões do PipeWire e outros microfones ainda não foram validados. O pacote LSP fixado do Fedora exige glibc 2.43; por isso, o preparador aceita Fedora 44 e Ubuntu 26.04 x86_64. Windows e macOS não são compatíveis.
+Outras distribuições Linux, interfaces gráficas, arquiteturas, versões do PipeWire e outros microfones ainda não foram validados. O pacote LSP fixado do Fedora exige glibc 2.43; por isso, o preparador aceita Fedora 44 e Ubuntu 26.04/26.10 x86_64. Windows e macOS não são compatíveis.
 
 A Vozena não cancela eco e não promete remover todos os sons de fundo. Ela não controla o ganho físico nem o padrão de captação do microfone; faça esses ajustes no próprio Blue Yeti. Não há garantia de funcionamento com um aplicativo de chamadas específico.
 
@@ -36,14 +36,14 @@ A versão publicada é um arquivo limpo de código-fonte. Ela não contém `.dep
      libsndfile libatomic libstdc++ xcb-util-cursor
    ```
 
-   **No Ubuntu 26.04:**
+   **No Ubuntu ou Kubuntu 26.04/26.10:**
 
    ```bash
    sudo apt install python3 python3-pip python3-venv pipewire pipewire-bin cpio systemd \
      libsndfile1 libatomic1 libstdc++6 libxcb-cursor0 rpm2cpio
    ```
 
-   Uma instalação normal do Fedora 44 ou Ubuntu 26.04 KDE já fornece as demais bibliotecas gráficas do Qt usadas pelo aplicativo.
+   Uma instalação normal do Fedora 44 ou Kubuntu 26.04/26.10 já fornece as demais bibliotecas gráficas do Qt usadas pelo aplicativo.
 
 2. Pelo navegador, baixe `vozena-0.4.2-source.tar.gz` e `SHA256SUMS` na [versão v0.4.2](https://github.com/caiolombello/vozena/releases/tag/v0.4.2). Coloque os dois arquivos na mesma pasta e confira o arquivo antes de extraí-lo:
 

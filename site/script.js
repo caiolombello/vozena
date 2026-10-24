@@ -72,7 +72,7 @@
     "privacy.footnote": "Seu app de reuniões continua seguindo as próprias configurações de áudio e privacidade.",
     "download.eyebrow": "SUA PRÓXIMA CHAMADA COMEÇA AQUI",
     "download.title": "Uma nova companhia\npara seu microfone.",
-    "download.body": "Comece pela prévia v0.4.2. Você precisa de Fedora 44 ou Ubuntu 26.04 x86_64, Python 3.11 ou mais recente e do microfone testado. Siga as instruções de instalação a partir do código-fonte.",
+    "download.body": "Comece pela prévia v0.4.2. Você precisa de Fedora 44 ou Ubuntu 26.04/26.10 x86_64, Python 3.11 ou mais recente e do microfone testado. Siga as instruções de instalação a partir do código-fonte.",
     "download.button": "Baixar a versão mais recente",
     "download.note": "Linux · Código-fonte · GPL-3.0-or-later",
     "install.title": "PRIMEIROS PASSOS",

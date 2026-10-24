@@ -50,9 +50,9 @@ def check_platform() -> None:
     distro_id = release.get("ID", "").lower()
     version_id = release.get("VERSION_ID", "")
     is_fedora_44 = distro_id == "fedora" and version_id == "44"
-    is_ubuntu_26 = distro_id == "ubuntu" and (version_id == "26.04" or version_id.startswith("26.04."))
+    is_ubuntu_26 = distro_id == "ubuntu" and version_id.split(".")[:2] in (["26", "04"], ["26", "10"])
     if sys.platform != "linux" or not (is_fedora_44 or is_ubuntu_26) or platform.machine() != "x86_64":
-        raise ValueError("This bootstrap supports Fedora 44 and Ubuntu 26.04 x86_64 only; other distributions are untested.")
+        raise ValueError("This bootstrap supports Fedora 44 and Ubuntu 26.04/26.10 x86_64 only; other distributions are untested.")
     if sys.version_info < (3, 11):
         raise ValueError("Python 3.11 or newer is required.")
     libc, version = platform.libc_ver()

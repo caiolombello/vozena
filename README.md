@@ -15,11 +15,11 @@ Built for clean speech, reliable virtual audio devices, and clear local control.
 Vozena v0.4.2 is a public preview. It has been validated on:
 
 - Fedora 44 x86_64
-- Ubuntu 26.04 x86_64
+- Ubuntu 26.04 and 26.10 x86_64, including Kubuntu
 - KDE Plasma with PipeWire 1.6.9
 - the classic USB Blue Yeti (`USB b58e:9e84`)
 
-Other Linux distributions, desktop environments, architectures, PipeWire versions, and microphones have not been validated. The pinned Fedora LSP build requires glibc 2.43, so the bootstrap is intentionally limited to Fedora 44 and Ubuntu 26.04 x86_64. Windows and macOS are not supported.
+Other Linux distributions, desktop environments, architectures, PipeWire versions, and microphones have not been validated. The pinned Fedora LSP build requires glibc 2.43, so the bootstrap is intentionally limited to Fedora 44 and Ubuntu 26.04/26.10 x86_64. Windows and macOS are not supported.
 
 The native interface is currently in Brazilian Portuguese. This guide includes its exact labels where you need to find a control.
 
@@ -38,14 +38,14 @@ The release is a clean source archive. It contains no vendored `.deps`, virtual 
      libsndfile libatomic libstdc++ xcb-util-cursor
    ```
 
-   **On Ubuntu 26.04:**
+   **On Ubuntu or Kubuntu 26.04/26.10:**
 
    ```bash
    sudo apt install python3 python3-pip python3-venv pipewire pipewire-bin cpio systemd \
      libsndfile1 libatomic1 libstdc++6 libxcb-cursor0 rpm2cpio
    ```
 
-   A normal Fedora 44 or Ubuntu 26.04 KDE installation already supplies the remaining Qt display libraries used by the app.
+   A normal Fedora 44 or Kubuntu 26.04/26.10 installation already supplies the remaining Qt display libraries used by the app.
 
 2. In a browser, download `vozena-0.4.2-source.tar.gz` and `SHA256SUMS` from the [v0.4.2 release](https://github.com/caiolombello/vozena/releases/tag/v0.4.2). Put both files in the same directory, then verify the archive before extracting it:
 

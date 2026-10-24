@@ -37,7 +37,7 @@ class DistributionTests(unittest.TestCase):
 
     def test_platform_rejects_other_distributions_before_downloads(self):
         with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": "24.04"}):
-            with self.assertRaisesRegex(ValueError, "Fedora 44 and Ubuntu 26.04 x86_64 only"):
+            with self.assertRaisesRegex(ValueError, "Fedora 44 and Ubuntu 26.04/26.10 x86_64 only"):
                 prepare.check_platform()
 
     def test_platform_accepts_fedora_44(self):
@@ -49,6 +49,18 @@ class DistributionTests(unittest.TestCase):
         with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": "26.04"}):
             with patch.object(prepare.platform, "libc_ver", return_value=("glibc", "2.43")):
                 prepare.check_platform()
+
+    def test_platform_accepts_ubuntu_26_10_and_point_releases(self):
+        for version in ("26.10", "26.04.1"):
+            with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": version}):
+                with patch.object(prepare.platform, "libc_ver", return_value=("glibc", "2.44")):
+                    prepare.check_platform()
+
+    def test_platform_rejects_other_ubuntu_releases(self):
+        for version in ("25.10", "26.4", "27.04"):
+            with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": version}):
+                with self.assertRaisesRegex(ValueError, "26.04/26.10 x86_64 only"):
+                    prepare.check_platform()
 
     def test_platform_rejects_older_glibc(self):
         with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": "26.04"}):
