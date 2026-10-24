@@ -143,6 +143,8 @@ class RecoveryTests(unittest.TestCase):
             self.controller._settings = settings
             self.controller._bypass = True
             self.controller._running = True
+            # Only a meter that was started can die unexpectedly.
+            self.controller._meter_started = True
             callback()
             self.assertTrue(self.controller.active)
             self.assertFalse(self.controller.running)
