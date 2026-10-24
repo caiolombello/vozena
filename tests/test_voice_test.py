@@ -139,6 +139,34 @@ time.sleep(float(os.environ.get('YETI_TEST_PLAY_DELAY', '.03')))
         self.assertIsNone(self.controller.sample)
         self.assertEqual(self.controller.state, 'idle')
 
+    def test_playback_follows_the_default_output_while_capture_stays_pinned(self):
+        """WirePlumber 0.5.13 (Ubuntu 26.04) destroyed playback pinned to the default sink."""
+        self.controller.record(Settings())
+        self.wait_until(lambda: self.controller.has_clip or self.errors)
+        self.controller.play('original')
+        self.wait_until(lambda: self.controller.state == 'ready' or self.errors)
+        self.assertFalse(self.errors)
+        record, play = (self.root / 'calls.txt').read_text().splitlines()
+        self.assertIn('--target=yeti_voice.test.source.', record)
+        self.assertIn('node.dont-fallback = true', record)
+        self.assertIn('node.dont-reconnect = true', record)
+        self.assertNotIn('--target', play)
+        self.assertNotIn('dont-fallback', play)
+
+    def test_explicit_playback_target_is_still_honoured(self):
+        self.controller.close()
+        self.controller = VoiceTestController(duration_seconds=1, playback_target='fixture.sink')
+        self.controller.error_occurred.connect(self.errors.append)
+        self.controller.record(Settings())
+        self.wait_until(lambda: self.controller.has_clip or self.errors)
+        self.controller.play('processed')
+        self.wait_until(lambda: self.controller.state == 'ready' or self.errors)
+        self.assertFalse(self.errors)
+        play = (self.root / 'calls.txt').read_text().splitlines()[-1]
+        self.assertIn('--playback', play)
+        self.assertIn('--target=fixture.sink', play)
+        self.assertNotIn('dont-fallback', play)
+
     def test_cancel_before_probe_completion_never_records(self):
         with patch.dict(os.environ, {'YETI_TEST_PROBE_DELAY': '.3'}):
             self.controller.record(Settings())

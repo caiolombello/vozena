@@ -1,3 +1,3 @@
 """Local voice processing for a Blue Yeti on PipeWire."""
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"

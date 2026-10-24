@@ -11,6 +11,7 @@ from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtWidgets import QApplication
 
 from yeti_voice.engine import VoiceController
+from yeti_voice.processing import OUTPUT_NODE
 from yeti_voice.settings import Settings
 
 
@@ -40,6 +41,18 @@ class EngineResponsivenessTests(unittest.TestCase):
         while time.monotonic() < deadline:
             QApplication.processEvents()
             time.sleep(.005)
+
+    def test_level_meter_stays_pinned_when_processed_microphone_is_the_default(self):
+        """WirePlumber 0.5.13 destroyed a dont-fallback stream aimed at the default source."""
+        self.controller = VoiceController(meter_enabled=False)
+        with patch.object(self.controller._meter, "start") as start:
+            self.controller._start_meter()
+        program, arguments = start.call_args.args
+        self.assertEqual(program, "pw-cat")
+        self.assertIn("--target=" + OUTPUT_NODE, arguments)
+        properties = next(argument for argument in arguments if argument.startswith("--properties="))
+        self.assertIn("node.dont-fallback = true", properties)
+        self.assertIn("node.dont-reconnect = true", properties)
 
     def test_slow_graph_probe_does_not_block_constructor_or_ui(self):
         ticks = []
