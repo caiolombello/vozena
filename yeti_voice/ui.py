@@ -113,6 +113,8 @@ class MainWindow(QMainWindow):
             controller.consumers_changed.connect(self._set_consumers)
         if hasattr(controller, "default_source_changed"):
             controller.default_source_changed.connect(self._set_default_source)
+        if hasattr(controller, "monitoring_changed"):
+            controller.monitoring_changed.connect(self._set_monitoring)
         if voice_test is not None:
             voice_test.state_changed.connect(self._set_voice_state)
             voice_test.progress_changed.connect(self._set_voice_progress)
@@ -146,6 +148,9 @@ class MainWindow(QMainWindow):
     def hideEvent(self, event):
         super().hideEvent(event)
         self._update_meter_demand()
+        # The live return is a tuning aid; never leave it playing unseen.
+        if getattr(self._controller, "monitoring", False):
+            self._controller.set_monitoring(False)
 
     def changeEvent(self, event):
         super().changeEvent(event)
@@ -378,8 +383,19 @@ class MainWindow(QMainWindow):
         self.saturation_label = self._label("Pico muito alto — reduza o volume da voz", "warning")
         self.saturation_label.hide()
         meter.addWidget(self.saturation_label)
+        meter_bottom = QHBoxLayout()
+        meter_bottom.setSpacing(10)
         self.meter_help = self._label("Ative o tratamento para acompanhar sua voz.")
-        meter.addWidget(self.meter_help)
+        meter_bottom.addWidget(self.meter_help, 1)
+        self.monitor_button = QPushButton("Ouvir ao vivo")
+        self.monitor_button.setObjectName("quietButton")
+        self.monitor_button.setCheckable(True)
+        self.monitor_button.setToolTip("Ouça nos fones a voz tratada enquanto ajusta os controles")
+        self.monitor_button.setAccessibleName("Ouvir a voz tratada ao vivo nos fones")
+        self.monitor_button.toggled.connect(self._toggle_monitoring)
+        self.monitor_button.setVisible(hasattr(self._controller, "set_monitoring"))
+        meter_bottom.addWidget(self.monitor_button, 0, Qt.AlignmentFlag.AlignBottom)
+        meter.addLayout(meter_bottom)
 
         signal_card, signal_layout = self._card()
         signal_layout.setContentsMargins(20, 14, 20, 14)
@@ -820,7 +836,7 @@ class MainWindow(QMainWindow):
         self.start_button.setText(
             "Parar tratamento" if self._active else "Ativar tratamento"
         )
-        for button in (self.original_button, self.processed_button):
+        for button in (self.original_button, self.processed_button, self.monitor_button):
             button.setEnabled(self._running)
         self.mute_button.setEnabled(self._active)
         if self._running and self._muted:
@@ -831,6 +847,22 @@ class MainWindow(QMainWindow):
         else:
             text = self._status_text or "Pronto para ativar"
         self.status_label.setText(text)
+
+    def _confirm_headphones(self):
+        return self._confirm(
+            "Use fones de ouvido. Em alto-falantes, sua voz volta para o microfone e causa "
+            "microfonia. Ouvir a voz tratada agora?")
+
+    def _toggle_monitoring(self, enabled):
+        if enabled and not self._confirm_headphones():
+            enabled = False
+        self._controller.set_monitoring(enabled)
+        self._set_monitoring(getattr(self._controller, "monitoring", enabled))
+
+    def _set_monitoring(self, monitoring):
+        with QSignalBlocker(self.monitor_button):
+            self.monitor_button.setChecked(bool(monitoring))
+        self.monitor_button.setText("Parar de ouvir" if monitoring else "Ouvir ao vivo")
 
     def _set_consumers(self, consumers):
         self._consumers = [str(name) for name in consumers]

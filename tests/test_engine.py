@@ -257,3 +257,38 @@ class MuteWatchTests(unittest.TestCase):
             self.controller._last_talk_alert -= 31
             self.controller._read_mute_watch()
         self.assertEqual(len(alerts), 2)
+
+
+class MonitoringTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_live_return_needs_a_running_treatment_and_stops_with_it(self):
+        with patch.object(VoiceController, "refresh"):
+            controller = VoiceController(meter_enabled=False)
+        controller._refresh_timer.stop()
+        states, launches = [], []
+        controller.monitoring_changed.connect(states.append)
+        monitor = controller._monitor
+
+        def launch(program, arguments=()):
+            launches.append((program, list(arguments)))
+            PipeWireProcess.start(monitor, "sleep", ["5"])
+
+        with patch.object(monitor, "start", side_effect=launch):
+            controller.set_monitoring(True)
+            self.assertEqual((launches, states), ([], []))
+            controller._running = controller._active = True
+            controller.set_monitoring(True)
+            program, arguments = launches[0]
+            self.assertEqual(program, "pw-loopback")
+            self.assertEqual(arguments[arguments.index("-C") + 1], OUTPUT_NODE)
+            self.assertIn('node.name = "yeti_voice.monitor.capture"', " ".join(arguments))
+            self.assertTrue(controller.monitoring)
+            with patch.object(VoiceController, "refresh"):
+                controller.stop()
+        controller._refresh_timer.stop()
+        self.assertEqual(states, [True, False])
+        self.assertFalse(controller.monitoring)
+        self.assertEqual(monitor.state(), QProcess.ProcessState.NotRunning)

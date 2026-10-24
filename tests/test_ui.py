@@ -25,6 +25,7 @@ class FakeController(QObject):
     muted_changed = Signal(bool)
     consumers_changed = Signal(list)
     default_source_changed = Signal(bool, str)
+    monitoring_changed = Signal(bool)
 
     def __init__(self):
         super().__init__()
@@ -35,6 +36,7 @@ class FakeController(QObject):
         self.calls = []
         self.meter_wanted = []
         self.mute_watch = []
+        self.monitoring = False
 
     def start(self, settings):
         self.calls.append(("start", settings))
@@ -60,6 +62,10 @@ class FakeController(QObject):
 
     def set_mute_watch_enabled(self, enabled):
         self.mute_watch.append(enabled)
+
+    def set_monitoring(self, enabled):
+        self.calls.append(("monitoring", enabled))
+        self.monitoring = enabled and self.running
 
     def stop(self):
         self.calls.append(("stop",))
@@ -240,6 +246,25 @@ class MainWindowTest(unittest.TestCase):
         self.window._ask_profile_name = lambda suggestion: "Reuniões"
         self.window.save_profile_button.click()
         self.assertIn("já é usado", self.window.error_label.text())
+
+    def test_live_return_asks_for_headphones_and_stops_when_hidden(self):
+        answers = iter([False, True])
+        self.window._confirm = lambda question: next(answers)
+        self.assertFalse(self.window.monitor_button.isEnabled())
+        self.controller.running = True
+        self.controller.running_changed.emit(True)
+        self.window.monitor_button.click()
+        self.assertEqual(self.controller.calls[-1], ("monitoring", False))
+        self.assertFalse(self.window.monitor_button.isChecked())
+        self.window.monitor_button.click()
+        self.assertEqual(self.controller.calls[-1], ("monitoring", True))
+        self.assertEqual(self.window.monitor_button.text(), "Parar de ouvir")
+        self.window.show()
+        QTest.qWait(10)
+        self.window.hide()
+        self.assertEqual(self.controller.calls[-1], ("monitoring", False))
+        self.controller.monitoring_changed.emit(False)
+        self.assertEqual(self.window.monitor_button.text(), "Ouvir ao vivo")
 
     def test_level_meter_follows_window_visibility(self):
         self.assertEqual(self.controller.meter_wanted, [False])

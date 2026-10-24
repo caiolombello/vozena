@@ -123,6 +123,7 @@ class VoiceController(QObject):
     # Yeti Processado is the system default input; configured default name.
     default_source_changed = Signal(bool, str)
     talking_while_muted = Signal()
+    monitoring_changed = Signal(bool)
 
     def __init__(self, parent=None, *, meter_enabled=True):
         super().__init__(parent)
@@ -165,6 +166,11 @@ class VoiceController(QObject):
         self._mute_watch_enabled = True
         self._speech = SpeechDetector()
         self._last_talk_alert = -math.inf
+        # Low-latency return of the processed voice to the current output.
+        self._monitor = PipeWireProcess(self)
+        self._monitor.finished.connect(self._monitor_stopped)
+        self._monitor.errorOccurred.connect(self._monitor_error)
+        self._monitoring = False
         self._metadata = PipeWireProcess(self)
         self._metadata.finished.connect(self._metadata_finished)
         self._metadata.errorOccurred.connect(self._metadata_error)
@@ -317,6 +323,40 @@ class VoiceController(QObject):
             if now - self._last_talk_alert >= 30:
                 self._last_talk_alert = now
                 self.talking_while_muted.emit()
+
+    @property
+    def monitoring(self):
+        return self._monitoring
+
+    def set_monitoring(self, enabled):
+        enabled = bool(enabled) and self._running
+        if enabled == self._monitoring:
+            return
+        self._monitoring = enabled
+        if enabled:
+            self._monitor.start("pw-loopback", [
+                "--name", "yeti_voice.monitor", "-c", "1", "-m", "[ MONO ]", "-l", "20",
+                "-C", OUTPUT_NODE,
+                "--capture-props", '{ node.name = "yeti_voice.monitor.capture" '
+                                   "node.dont-fallback = true node.dont-reconnect = true }",
+                "--playback-props", '{ node.name = "yeti_voice.monitor.playback" '
+                                    'node.description = "Vozena · retorno da voz" }'])
+        elif self._monitor.state() != QProcess.ProcessState.NotRunning:
+            self._monitor.terminate()
+            if not self._monitor.waitForFinished(100):
+                self._monitor.kill()
+                self._monitor.waitForFinished(100)
+        self.monitoring_changed.emit(enabled)
+
+    def _monitor_stopped(self, *_):
+        if self._monitoring:
+            self._monitoring = False
+            self.monitoring_changed.emit(False)
+
+    def _monitor_error(self, error):
+        if error == QProcess.ProcessError.FailedToStart:
+            self.error_occurred.emit("Não foi possível iniciar o retorno da voz (pw-loopback).")
+            self._monitor_stopped()
 
     def set_default_source(self, name):
         """Configure the system default input; None lets WirePlumber choose."""
@@ -507,6 +547,7 @@ class VoiceController(QObject):
     def _recover(self, message):
         if not self._active or self._stopping:
             return
+        self.set_monitoring(False)
         self._recovering = True
         self._retrying = True
         self._generation += 1
@@ -690,6 +731,7 @@ class VoiceController(QObject):
         self.error_occurred.emit(message)
 
     def stop(self):
+        self.set_monitoring(False)
         self._stopping = True
         self._generation += 1
         self._retry_timer.stop()
