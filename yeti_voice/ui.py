@@ -1,6 +1,7 @@
 """Native controls for the local Yeti voice processor."""
 
 from collections.abc import Callable
+from dataclasses import replace
 import math
 from pathlib import Path
 
@@ -25,7 +26,8 @@ from PySide6.QtWidgets import (
 )
 
 from .calibration import analyze_voice_sample
-from .settings import PRESETS, Settings
+from .processing import OUTPUT_NODE
+from .settings import PRESETS, Preferences, Settings
 
 
 class _ScrollSafeComboBox(QComboBox):
@@ -53,11 +55,19 @@ class MainWindow(QMainWindow):
         settings: Settings,
         save_settings: Callable[[Settings], None],
         voice_test=None,
+        *,
+        preferences: Preferences | None = None,
+        save_preferences: Callable[[Preferences], None] | None = None,
     ):
         super().__init__()
         self._controller = controller
         self._settings = settings
         self._save_settings = save_settings
+        self._preferences = preferences or Preferences()
+        self._save_preferences = save_preferences or (lambda _preferences: None)
+        self._consumers = list(getattr(controller, "consumers", []))
+        self._processed_is_default = bool(getattr(controller, "is_default_source", False))
+        self._configured_source = str(getattr(controller, "configured_default_source", ""))
         self._voice_test = voice_test
         self._voice_state = "idle"
         self._voice_has_clip = False
@@ -93,6 +103,10 @@ class MainWindow(QMainWindow):
             controller.active_changed.connect(self._set_active)
         if hasattr(controller, "muted_changed"):
             controller.muted_changed.connect(self._set_muted)
+        if hasattr(controller, "consumers_changed"):
+            controller.consumers_changed.connect(self._set_consumers)
+        if hasattr(controller, "default_source_changed"):
+            controller.default_source_changed.connect(self._set_default_source)
         if voice_test is not None:
             voice_test.state_changed.connect(self._set_voice_state)
             voice_test.progress_changed.connect(self._set_voice_progress)
@@ -269,11 +283,28 @@ class MainWindow(QMainWindow):
         page.addLayout(footer)
 
     def _build_microphone(self, page):
-        destination, route = self._card("destinationCard")
-        route.setContentsMargins(16, 12, 16, 12)
-        route.setSpacing(3)
+        destination = QFrame()
+        destination.setObjectName("destinationCard")
+        row = QHBoxLayout(destination)
+        row.setContentsMargins(16, 10, 16, 10)
+        row.setSpacing(12)
+        route = QVBoxLayout()
+        route.setSpacing(2)
         route.addWidget(self._label("NA SUA REUNIÃO", "eyebrow"))
-        route.addWidget(self._label("Selecione Yeti Processado como microfone", "destination"))
+        self.destination_card = destination
+        self.destination_title = self._label("Selecione Yeti Processado como microfone", "destination")
+        self.destination_title.setAccessibleName("Uso do Yeti Processado")
+        route.addWidget(self.destination_title)
+        self.destination_detail = self._label("", "destinationDetail")
+        route.addWidget(self.destination_detail)
+        row.addLayout(route, 1)
+        self.default_source_button = QPushButton("Usar como microfone padrão")
+        self.default_source_button.setObjectName("quietButton")
+        self.default_source_button.setToolTip(
+            "Faz os apps que usam o microfone padrão do sistema receberem sua voz tratada")
+        self.default_source_button.clicked.connect(self._toggle_default_source)
+        self.default_source_button.setVisible(hasattr(self._controller, "set_default_source"))
+        row.addWidget(self.default_source_button, 0, Qt.AlignmentFlag.AlignVCenter)
         page.addWidget(destination)
 
         controls_card, controls = self._card()
@@ -633,6 +664,7 @@ class MainWindow(QMainWindow):
         self._reset_meter()
 
     def _refresh_engine_state(self):
+        self._refresh_destination()
         if self._running and self._muted:
             label, tone = "Silenciado", "muted"
         elif self._running:
@@ -663,6 +695,53 @@ class MainWindow(QMainWindow):
         else:
             text = self._status_text or "Pronto para ativar"
         self.status_label.setText(text)
+
+    def _set_consumers(self, consumers):
+        self._consumers = [str(name) for name in consumers]
+        self._refresh_destination()
+
+    def _set_default_source(self, processed_is_default, configured):
+        self._processed_is_default = bool(processed_is_default)
+        self._configured_source = configured or ""
+        self._refresh_destination()
+
+    def _refresh_destination(self):
+        if not hasattr(self, "destination_title"):
+            return
+        in_use = self._running and bool(self._consumers)
+        if in_use:
+            self.destination_title.setText("Em uso: " + ", ".join(self._consumers))
+            detail = "Sua voz tratada está chegando a esse app."
+        else:
+            self.destination_title.setText("Selecione Yeti Processado como microfone")
+            detail = ("Nenhum app está usando o microfone tratado agora." if self._running else
+                      "Ative o tratamento para ele aparecer na lista de microfones.")
+        configured = self._configured_source == OUTPUT_NODE
+        if configured:
+            detail += " Ele é o microfone padrão do sistema."
+        self.destination_detail.setText(detail)
+        self.default_source_button.setText("Restaurar microfone anterior" if configured else "Usar como microfone padrão")
+        self.default_source_button.setEnabled(configured or self._running)
+        self.destination_card.setProperty("tone", "inUse" if in_use else "")
+        self.destination_card.style().unpolish(self.destination_card)
+        self.destination_card.style().polish(self.destination_card)
+
+    def _toggle_default_source(self):
+        if self._configured_source == OUTPUT_NODE:
+            previous = self._preferences.previous_default_source or None
+            if self._controller.set_default_source(previous):
+                self._update_preferences(previous_default_source="")
+        else:
+            previous = self._configured_source if self._configured_source != OUTPUT_NODE else ""
+            if self._controller.set_default_source(OUTPUT_NODE):
+                self._update_preferences(previous_default_source=previous)
+
+    def _update_preferences(self, **changes):
+        self._preferences = replace(self._preferences, **changes)
+        try:
+            self._save_preferences(self._preferences)
+        except OSError as error:
+            self._show_error(f"Não foi possível salvar as preferências: {error}")
 
     def _set_status(self, status):
         self._status_text = status or "Pronto"
@@ -994,6 +1073,8 @@ class MainWindow(QMainWindow):
             QFrame#destinationCard { background: #172d2b;
                 border: 1px solid #294b45; border-radius: 10px; }
             QLabel#destination { color: #d0f4ea; font-weight: 600; }
+            QLabel#destinationDetail { color: #a9cfc6; font-size: 12px; }
+            QFrame#destinationCard[tone="inUse"] { background: #163a31; border-color: #3b8b77; }
             QFrame#stepCard[active="true"], QFrame#resultCard { background: #17322d;
                 border: 1px solid #3b8b77; border-radius: 12px; }
             QFrame#activityCard { background: #22343d;

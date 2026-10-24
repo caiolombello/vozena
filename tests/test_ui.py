@@ -10,7 +10,8 @@ from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from yeti_voice.settings import Settings
+from yeti_voice.processing import OUTPUT_NODE
+from yeti_voice.settings import Preferences, Settings
 from yeti_voice.ui import MainWindow
 
 
@@ -22,6 +23,8 @@ class FakeController(QObject):
     error_occurred = Signal(str)
     active_changed = Signal(bool)
     muted_changed = Signal(bool)
+    consumers_changed = Signal(list)
+    default_source_changed = Signal(bool, str)
 
     def __init__(self):
         super().__init__()
@@ -49,6 +52,10 @@ class FakeController(QObject):
 
     def set_meter_wanted(self, wanted):
         self.meter_wanted.append(wanted)
+
+    def set_default_source(self, name):
+        self.calls.append(("default_source", name))
+        return True
 
     def stop(self):
         self.calls.append(("stop",))
@@ -106,6 +113,36 @@ class MainWindowTest(unittest.TestCase):
             self.saved.append,
             self.voice_test,
         )
+
+    def test_meeting_card_shows_which_app_receives_the_processed_voice(self):
+        self.assertIn("Ative o tratamento", self.window.destination_detail.text())
+        self.assertFalse(self.window.default_source_button.isEnabled())
+        self.controller.running_changed.emit(True)
+        self.assertIn("Nenhum app", self.window.destination_detail.text())
+        self.controller.consumers_changed.emit(["Google Chrome", "ZOOM VoiceEngine"])
+        self.assertEqual(self.window.destination_title.text(), "Em uso: Google Chrome, ZOOM VoiceEngine")
+        self.assertEqual(self.window.destination_card.property("tone"), "inUse")
+        self.controller.running_changed.emit(False)
+        self.assertEqual(self.window.destination_title.text(), "Selecione Yeti Processado como microfone")
+
+    def test_processed_microphone_can_become_default_and_be_restored(self):
+        saved = []
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append,
+                                 preferences=Preferences(), save_preferences=saved.append)
+        self.controller.default_source_changed.emit(False, "alsa_input.usb-yeti")
+        self.controller.running_changed.emit(True)
+        self.window.default_source_button.click()
+        self.assertEqual(self.controller.calls[-1], ("default_source", OUTPUT_NODE))
+        self.assertEqual(saved[-1].previous_default_source, "alsa_input.usb-yeti")
+        self.controller.default_source_changed.emit(True, OUTPUT_NODE)
+        self.assertEqual(self.window.default_source_button.text(), "Restaurar microfone anterior")
+        self.assertIn("microfone padrão do sistema", self.window.destination_detail.text())
+        self.controller.running_changed.emit(False)
+        self.assertTrue(self.window.default_source_button.isEnabled())
+        self.window.default_source_button.click()
+        self.assertEqual(self.controller.calls[-1], ("default_source", "alsa_input.usb-yeti"))
+        self.assertEqual(saved[-1].previous_default_source, "")
 
     def test_level_meter_follows_window_visibility(self):
         self.assertEqual(self.controller.meter_wanted, [False])

@@ -13,7 +13,7 @@ from . import __version__
 from .engine import VoiceController, check_dependencies, find_yeti, graph_snapshot
 from .desktop import CommandServer, DesktopIntegration, SuspendMonitor, runtime_directory, send_command
 from .processing import ROOT
-from .storage import load_settings, save_settings
+from .storage import load_preferences, load_settings, save_preferences, save_settings
 from .shortcuts import GlobalShortcut
 from .ui import MainWindow
 from .voice_test import VoiceTestController
@@ -64,6 +64,7 @@ def main():
     controller = VoiceController()
     voice_test = VoiceTestController()
     settings, warning = load_settings()
+    preferences, preferences_warning = load_preferences()
 
     def persist(values):
         try:
@@ -71,7 +72,8 @@ def main():
         except OSError as error:
             controller.error_occurred.emit(f"Não foi possível salvar os ajustes: {error}")
 
-    window = MainWindow(controller, settings, persist, voice_test)
+    window = MainWindow(controller, settings, persist, voice_test,
+                        preferences=preferences, save_preferences=save_preferences)
     desktop = commands = sleep_monitor = shortcut = None
     if not options.render:
         desktop = DesktopIntegration(window, controller, voice_test, app)
@@ -92,8 +94,9 @@ def main():
         app.aboutToQuit.connect(shortcut.close)
         if not sleep_monitor.connected:
             controller.error_occurred.emit("Não foi possível acompanhar a suspensão do sistema.")
-    if warning:
-        controller.error_occurred.emit(warning)
+    for message in (warning, preferences_warning):
+        if message:
+            controller.error_occurred.emit(message)
     app.aboutToQuit.connect(controller.stop)
     app.aboutToQuit.connect(voice_test.close)
     window.show()

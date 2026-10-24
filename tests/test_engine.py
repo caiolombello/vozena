@@ -10,7 +10,7 @@ from unittest.mock import patch
 from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtWidgets import QApplication
 
-from yeti_voice.engine import PipeWireProcess, VoiceController
+from yeti_voice.engine import PipeWireProcess, VoiceController, default_node_name, node_consumers
 from yeti_voice.processing import OUTPUT_NODE
 from yeti_voice.settings import Settings
 
@@ -122,3 +122,79 @@ class EngineResponsivenessTests(unittest.TestCase):
         self.assertFalse(self.controller.running)
         self.assertTrue(self.controller._retry_timer.isActive())
         self.assertEqual(self.controller._worker.state(), QProcess.ProcessState.NotRunning)
+
+
+def graph(*, links=(), default_source=None, configured_source=None):
+    objects = [
+        {"id": 10, "type": "PipeWire:Interface:Node", "info": {"props": {"node.name": OUTPUT_NODE}}},
+        {"id": 11, "type": "PipeWire:Interface:Node", "info": {"props": {
+            "node.name": "Chromium input", "application.name": "Google Chrome"}}},
+        {"id": 12, "type": "PipeWire:Interface:Node", "info": {"props": {"node.name": "yeti_voice.meter",
+            "application.name": "pw-cat"}}},
+        {"id": 13, "type": "PipeWire:Interface:Node", "info": {"props": {
+            "node.name": "ZOOM VoiceEngine", "node.description": "ZOOM VoiceEngine"}}},
+        {"id": 14, "type": "PipeWire:Interface:Node", "info": {"props": {"node.name": "other.source"}}},
+    ]
+    for number, (output, target, state) in enumerate(links):
+        objects.append({"id": 100 + number, "type": "PipeWire:Interface:Link", "info": {
+            "output-node-id": output, "input-node-id": target, "state": state}})
+    metadata = []
+    if default_source:
+        metadata.append({"key": "default.audio.source", "value": {"name": default_source}})
+    if configured_source:
+        # Some pw-dump versions print JSON metadata values as strings.
+        metadata.append({"key": "default.configured.audio.source",
+                         "value": '{ "name": "%s" }' % configured_source})
+    objects.append({"props": {"metadata.name": "default"}, "metadata": metadata})
+    return objects
+
+
+class GraphUsageTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_consumers_are_apps_reading_the_processed_microphone(self):
+        objects = graph(links=[(10, 11, "active"), (10, 11, "active"), (10, 12, "active"),
+                               (10, 13, "paused"), (14, 13, "active"), (10, 14, "error")])
+        self.assertEqual(node_consumers(objects, OUTPUT_NODE), ["Google Chrome", "ZOOM VoiceEngine"])
+        self.assertEqual(node_consumers(objects, "missing.node"), [])
+
+    def test_default_metadata_accepts_objects_and_json_strings(self):
+        objects = graph(default_source=OUTPUT_NODE, configured_source="alsa_input.yeti")
+        self.assertEqual(default_node_name(objects, "default.audio.source"), OUTPUT_NODE)
+        self.assertEqual(default_node_name(objects, "default.configured.audio.source"), "alsa_input.yeti")
+        self.assertIsNone(default_node_name(objects, "default.audio.sink"))
+
+    def test_controller_publishes_usage_only_while_running(self):
+        with patch.object(VoiceController, "refresh"):
+            controller = VoiceController(meter_enabled=False)
+        consumers, defaults = [], []
+        controller.consumers_changed.connect(consumers.append)
+        controller.default_source_changed.connect(lambda *state: defaults.append(state))
+        objects = graph(links=[(10, 11, "active")], default_source=OUTPUT_NODE, configured_source=OUTPUT_NODE)
+        controller._publish_usage(objects)
+        self.assertEqual(consumers, [])
+        self.assertEqual(defaults, [(True, OUTPUT_NODE)])
+        controller._running = True
+        controller._publish_usage(objects)
+        controller._publish_usage(objects)
+        self.assertEqual(consumers, [["Google Chrome"]])
+        self.assertEqual(controller.consumers, ["Google Chrome"])
+        controller._refresh_timer.stop()
+        controller.stop()
+        self.assertEqual(consumers[-1], [])
+        controller._refresh_timer.stop()
+
+    def test_default_source_is_configured_through_wireplumber_metadata(self):
+        with patch.object(VoiceController, "refresh"):
+            controller = VoiceController(meter_enabled=False)
+        controller._refresh_timer.stop()
+        with patch.object(controller._metadata, "start") as start:
+            self.assertTrue(controller.set_default_source(OUTPUT_NODE))
+            controller.set_default_source(None)
+        self.assertEqual(start.call_args_list[0].args, ("pw-metadata", [
+            "-n", "default", "0", "default.configured.audio.source",
+            '{"name": "yeti_voice.processed"}', "Spa:String:JSON"]))
+        self.assertEqual(start.call_args_list[1].args, ("pw-metadata", [
+            "-n", "default", "-d", "0", "default.configured.audio.source"]))
