@@ -16,6 +16,9 @@ from .processing import make_config, serialize_config
 from .settings import Settings
 
 SAMPLE_RATE = 48000
+# The Yeti's mute button delivers digital silence; any open microphone,
+# even in a quiet room, stays far above -80 dBFS.
+SILENCE_PEAK = 10 ** (-80 / 20)
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,12 @@ class VoiceSample:
     @property
     def duration_seconds(self):
         return len(self.original) / (SAMPLE_RATE * 4)
+
+    @property
+    def original_peak(self):
+        samples = array("f")
+        samples.frombytes(self.original)
+        return max(map(abs, samples), default=0.0)
 
     def audio_for(self, mode):
         if mode not in ("original", "processed"):
@@ -269,6 +278,10 @@ class VoiceTestController(QObject):
                                                   frames=self._duration * SAMPLE_RATE)
         except ValueError:
             self._fail('A gravação ficou incompleta. Confira o Yeti e tente novamente.')
+            return
+        if sample.original_peak < SILENCE_PEAK:
+            self._fail('A gravação ficou em silêncio. Confira se o botão de mudo do Yeti está '
+                       'ativado (luz vermelha piscando) e grave de novo.')
             return
         self._stop_processes()
         self._sample = sample
