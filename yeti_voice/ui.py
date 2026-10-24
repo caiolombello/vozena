@@ -14,8 +14,10 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -28,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from .calibration import analyze_voice_sample
 from .processing import OUTPUT_NODE
-from .settings import PRESETS, Preferences, Settings
+from .settings import CUSTOM_LABEL, PRESETS, Preferences, Settings, validate_profile_name
 
 
 class _ScrollSafeComboBox(QComboBox):
@@ -322,15 +324,27 @@ class MainWindow(QMainWindow):
         self.preset_combo = _ScrollSafeComboBox()
         self.preset_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.preset_combo.setObjectName("presetCombo")
-        self.preset_combo.addItems([*PRESETS, "Personalizado"])
         self.preset_combo.setAccessibleName("Perfil de voz")
         self.preset_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.preset_combo.currentTextChanged.connect(self._preset_changed)
         preset_label.setBuddy(self.preset_combo)
+        self.save_profile_button = QPushButton("Salvar")
+        self.save_profile_button.setObjectName("quietButton")
+        self.save_profile_button.setToolTip("Salvar os ajustes atuais como um perfil seu")
+        self.save_profile_button.setAccessibleName("Salvar perfil de voz")
+        self.save_profile_button.clicked.connect(self._save_profile)
+        self.delete_profile_button = QPushButton("Excluir")
+        self.delete_profile_button.setObjectName("quietButton")
+        self.delete_profile_button.setToolTip("Excluir o perfil selecionado")
+        self.delete_profile_button.setAccessibleName("Excluir perfil de voz")
+        self.delete_profile_button.clicked.connect(self._delete_profile)
         preset_row.addWidget(preset_label)
         preset_row.addStretch()
         preset_row.addWidget(self.preset_combo, 1)
+        preset_row.addWidget(self.save_profile_button)
+        preset_row.addWidget(self.delete_profile_button)
         controls.addLayout(preset_row)
+        self._rebuild_presets()
         self.noise_slider, self.noise_value = self._add_slider(
             controls, "Redução de ruído", "Suaviza sons constantes do ambiente", 0, 100, "noiseSlider")
         self.clarity_slider, self.clarity_value = self._add_slider(
@@ -667,19 +681,70 @@ class MainWindow(QMainWindow):
         self._sync_preset_name()
         self._update_timer.start()
 
+    def _profiles(self):
+        return {**PRESETS, **self._preferences.profile_map}
+
+    def _rebuild_presets(self):
+        with QSignalBlocker(self.preset_combo):
+            self.preset_combo.clear()
+            self.preset_combo.addItems(list(PRESETS))
+            if self._preferences.profiles:
+                self.preset_combo.insertSeparator(self.preset_combo.count())
+                self.preset_combo.addItems([name for name, _ in self._preferences.profiles])
+            self.preset_combo.insertSeparator(self.preset_combo.count())
+            self.preset_combo.addItem(CUSTOM_LABEL)
+        self._sync_preset_name()
+
     def _preset_changed(self, name):
-        if name not in PRESETS:
-            return
-        self._load_settings(PRESETS[name])
-        self._update_timer.start()
+        profiles = self._profiles()
+        if name in profiles:
+            self._load_settings(profiles[name])
+            self._update_timer.start()
+        self._update_profile_actions()
 
     def _sync_preset_name(self):
         name = next(
-            (name for name, values in PRESETS.items() if values == self._settings),
-            "Personalizado",
+            (name for name, values in self._profiles().items() if values == self._settings),
+            CUSTOM_LABEL,
         )
         with QSignalBlocker(self.preset_combo):
             self.preset_combo.setCurrentText(name)
+        self._update_profile_actions()
+
+    def _update_profile_actions(self):
+        if hasattr(self, "delete_profile_button"):
+            self.delete_profile_button.setEnabled(
+                self.preset_combo.currentText() in self._preferences.profile_map)
+
+    def _ask_profile_name(self, suggestion):
+        name, accepted = QInputDialog.getText(
+            self, "Salvar perfil de voz", "Nome do perfil (ex.: Ventilador ligado):", text=suggestion)
+        return name if accepted else None
+
+    def _confirm(self, question):
+        return QMessageBox.question(self, "Vozena", question) == QMessageBox.StandardButton.Yes
+
+    def _save_profile(self):
+        current = self.preset_combo.currentText()
+        name = self._ask_profile_name(current if current in self._preferences.profile_map else "")
+        if name is None:
+            return
+        try:
+            name = validate_profile_name(name)
+        except ValueError as error:
+            self._show_error(str(error))
+            return
+        if name in self._preferences.profile_map and not self._confirm(f"Substituir o perfil “{name}”?"):
+            return
+        self._update_preferences(profiles=self._preferences.with_profile(name, self._settings).profiles)
+        self._rebuild_presets()
+
+    def _delete_profile(self):
+        name = self.preset_combo.currentText()
+        if name not in self._preferences.profile_map or not self._confirm(f"Excluir o perfil “{name}”?"):
+            return
+        self._update_preferences(profiles=self._preferences.without_profile(name).profiles)
+        self._rebuild_presets()
 
     def _update_value_labels(self):
         self.noise_value.setText(f"{self.noise_slider.value()}%")

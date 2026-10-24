@@ -205,6 +205,42 @@ class MainWindowTest(unittest.TestCase):
         self.assertEqual(self.controller.mute_watch, [False, True])
         self.assertTrue(saved[-1].warn_when_muted)
 
+    def test_custom_profiles_are_saved_loaded_replaced_and_deleted(self):
+        saved = []
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append,
+                                 preferences=Preferences(), save_preferences=saved.append)
+        answers = iter(["  Ventilador   ligado ", "Ventilador ligado"])
+        confirmations = iter([False, True, True])
+        self.window._ask_profile_name = lambda suggestion: next(answers)
+        self.window._confirm = lambda question: next(confirmations)
+        self.assertFalse(self.window.delete_profile_button.isEnabled())
+        self.window.noise_slider.setValue(91)
+        self.window.save_profile_button.click()
+        self.assertEqual(saved[-1].profile_map, {"Ventilador ligado": Settings(91, 35, 0.0)})
+        self.assertEqual(self.window.preset_combo.currentText(), "Ventilador ligado")
+        self.assertTrue(self.window.delete_profile_button.isEnabled())
+
+        self.window.preset_combo.setCurrentText("Voz natural")
+        self.assertEqual(self.window._settings, Settings(40, 15, 0.0))
+        self.window.preset_combo.setCurrentText("Ventilador ligado")
+        self.assertEqual(self.window._settings, Settings(91, 35, 0.0))
+
+        self.window.noise_slider.setValue(60)
+        self.window.save_profile_button.click()  # declined replacement
+        self.assertEqual(saved[-1].profile_map, {"Ventilador ligado": Settings(91, 35, 0.0)})
+        self.assertEqual(self.window.preset_combo.currentText(), "Personalizado")
+        self.window.preset_combo.setCurrentText("Ventilador ligado")
+        self.window.delete_profile_button.click()
+        self.assertEqual(saved[-1].profiles, ())
+        self.assertEqual(self.window.preset_combo.currentText(), "Personalizado")
+        self.assertEqual(self.window.preset_combo.findText("Ventilador ligado"), -1)
+
+    def test_profile_names_cannot_replace_built_in_profiles(self):
+        self.window._ask_profile_name = lambda suggestion: "Reuniões"
+        self.window.save_profile_button.click()
+        self.assertIn("já é usado", self.window.error_label.text())
+
     def test_level_meter_follows_window_visibility(self):
         self.assertEqual(self.controller.meter_wanted, [False])
         self.window.show()
