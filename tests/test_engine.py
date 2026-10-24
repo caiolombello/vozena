@@ -10,7 +10,7 @@ from unittest.mock import patch
 from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtWidgets import QApplication
 
-from yeti_voice.engine import VoiceController
+from yeti_voice.engine import PipeWireProcess, VoiceController
 from yeti_voice.processing import OUTPUT_NODE
 from yeti_voice.settings import Settings
 
@@ -41,6 +41,15 @@ class EngineResponsivenessTests(unittest.TestCase):
         while time.monotonic() < deadline:
             QApplication.processEvents()
             time.sleep(.005)
+
+    def test_pipewire_tools_run_without_library_log_noise(self):
+        process = PipeWireProcess()
+        with patch.dict(os.environ, {"PIPEWIRE_DEBUG": "4", "HOME_MARKER": "kept"}):
+            process.start("true", [])
+        process.waitForFinished(2000)
+        environment = process.processEnvironment()
+        self.assertEqual(environment.value("PIPEWIRE_DEBUG"), "0")
+        self.assertEqual(environment.value("HOME_MARKER"), "kept")
 
     def test_level_meter_stays_pinned_when_processed_microphone_is_the_default(self):
         """WirePlumber 0.5.13 destroyed a dont-fallback stream aimed at the default source."""

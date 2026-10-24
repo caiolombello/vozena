@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 
-from PySide6.QtCore import QObject, QProcess, QTimer, Signal
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
 from .processing import CAPTURE_NODE, OUTPUT_NODE, ROOT, make_config, props_payload, serialize_config
 from .settings import Settings
@@ -20,6 +20,23 @@ from .settings import Settings
 # stream ("defined target not found", reproduced with WirePlumber 0.5.13 on
 # Ubuntu 26.04). node.dont-reconnect keeps the stream pinned to its target.
 PINNED_CAPTURE = "--properties={ node.dont-fallback = true node.dont-reconnect = true }"
+
+
+class PipeWireProcess(QProcess):
+    """A QProcess for PipeWire tools with library logging switched off.
+
+    Without RTKit, or with PIPEWIRE_DEBUG set by the user, every client logs
+    warnings to stderr. pw-cli reports failures only on stderr (it exits 0),
+    so stderr must stay meaningful: tool errors such as "Error: ..." are
+    printed directly and remain visible with PIPEWIRE_DEBUG=0. The
+    environment is read at each start, like a plain QProcess.
+    """
+
+    def start(self, program, arguments=()):
+        environment = QProcessEnvironment.systemEnvironment()
+        environment.insert("PIPEWIRE_DEBUG", "0")
+        self.setProcessEnvironment(environment)
+        super().start(program, list(arguments))
 
 
 def graph_snapshot():
@@ -87,21 +104,21 @@ class VoiceController(QObject):
         self._pcm = bytearray()
         self._peak = 0.0
         self._diagnostics = bytearray()
-        self._worker = QProcess(self)
+        self._worker = PipeWireProcess(self)
         self._worker.readyReadStandardError.connect(self._worker_stderr)
         self._worker.finished.connect(self._worker_finished)
         self._worker.errorOccurred.connect(self._worker_error)
-        self._meter = QProcess(self)
+        self._meter = PipeWireProcess(self)
         self._meter.readyReadStandardOutput.connect(self._read_meter)
         self._meter.finished.connect(self._meter_finished)
         self._meter.errorOccurred.connect(self._meter_error)
-        self._probe = QProcess(self)
+        self._probe = PipeWireProcess(self)
         self._probe.finished.connect(self._probe_finished)
         self._probe.errorOccurred.connect(self._probe_error)
         self._probe_deadline = QTimer(self)
         self._probe_deadline.setSingleShot(True)
         self._probe_deadline.timeout.connect(self._probe_timeout)
-        self._parameters = QProcess(self)
+        self._parameters = PipeWireProcess(self)
         self._parameters.finished.connect(self._parameters_finished)
         self._parameters.errorOccurred.connect(self._parameters_error)
         self._parameters_deadline = QTimer(self)

@@ -11,7 +11,7 @@ import uuid
 
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
-from .engine import PINNED_CAPTURE, check_dependencies, find_yeti, node_named
+from .engine import PINNED_CAPTURE, PipeWireProcess, check_dependencies, find_yeti, node_named
 from .processing import make_config, serialize_config
 from .settings import Settings
 
@@ -115,10 +115,10 @@ class VoiceTestController(QObject):
         self._capture_name = ''
         self._output_name = ''
         self._stderr = {name: bytearray() for name in ('probe', 'worker', 'recorder', 'player')}
-        self._probe = QProcess(self)
-        self._worker = QProcess(self)
-        self._recorder = QProcess(self)
-        self._player = QProcess(self)
+        self._probe = PipeWireProcess(self)
+        self._worker = PipeWireProcess(self)
+        self._recorder = PipeWireProcess(self)
+        self._player = PipeWireProcess(self)
         for name, process in self._processes():
             process.readyReadStandardError.connect(lambda name=name: self._read_stderr(name))
             process.errorOccurred.connect(lambda error, name=name: self._process_error(name, error))
