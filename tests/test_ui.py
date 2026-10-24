@@ -6,7 +6,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -30,6 +30,7 @@ class FakeController(QObject):
         self.muted = False
         self.device_description = "Blue Yeti (teste)"
         self.calls = []
+        self.meter_wanted = []
 
     def start(self, settings):
         self.calls.append(("start", settings))
@@ -45,6 +46,9 @@ class FakeController(QObject):
 
     def set_suspended(self, suspended):
         self.calls.append(("suspended", suspended))
+
+    def set_meter_wanted(self, wanted):
+        self.meter_wanted.append(wanted)
 
     def stop(self):
         self.calls.append(("stop",))
@@ -102,6 +106,22 @@ class MainWindowTest(unittest.TestCase):
             self.saved.append,
             self.voice_test,
         )
+
+    def test_level_meter_follows_window_visibility(self):
+        self.assertEqual(self.controller.meter_wanted, [False])
+        self.window.show()
+        QTest.qWait(20)
+        self.window.setWindowState(Qt.WindowState.WindowMinimized)
+        QTest.qWait(20)
+        self.window.setWindowState(Qt.WindowState.WindowNoState)
+        self.window.show()
+        QTest.qWait(20)
+        self.window.hide()
+        self.assertEqual(self.controller.meter_wanted[0], False)
+        self.assertIn(True, self.controller.meter_wanted)
+        self.assertEqual(self.controller.meter_wanted[-1], False)
+        minimized_index = self.controller.meter_wanted.index(True) + 1
+        self.assertFalse(self.controller.meter_wanted[minimized_index])
 
     def test_starts_paused_and_requests_activation(self):
         self.assertEqual(self.window.state_label.text(), "Pausado")

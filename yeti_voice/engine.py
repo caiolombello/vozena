@@ -97,6 +97,9 @@ class VoiceController(QObject):
         self._temporary = None
         self._generation = 0
         self._meter_enabled = meter_enabled
+        # Any active reader keeps the passive capture (and the Yeti) running,
+        # so levels are read only while the window is on screen.
+        self._meter_wanted = True
         self._meter_started = False
         self._parameters_dirty = False
         self._parameters_pending = False
@@ -427,7 +430,7 @@ class VoiceController(QObject):
             else:
                 self.status_changed.emit("Microfone processado silenciado" if self._muted else
                     ("Áudio original" if self._bypass else "Escolha Yeti Processado na chamada"))
-                if self._meter_enabled and not self._meter_started:
+                if self._meter_enabled and self._meter_wanted and not self._meter_started:
                     self._start_meter()
 
     def _parameters_error(self, error):
@@ -450,6 +453,30 @@ class VoiceController(QObject):
             self._parameters.kill()
             self._parameter_failure_pending = True
             self.refresh()
+
+    def set_meter_wanted(self, wanted):
+        wanted = bool(wanted)
+        if wanted == self._meter_wanted:
+            return
+        self._meter_wanted = wanted
+        if not wanted:
+            self._stop_meter()
+        elif (self._running and self._meter_enabled and not self._meter_started
+              and not self._parameters_pending):
+            self._start_meter()
+
+    def _stop_meter(self):
+        # Cleared first so the finished/error signals of this stop are ignored.
+        self._meter_started = False
+        self._level_timer.stop()
+        if self._meter.state() != QProcess.ProcessState.NotRunning:
+            self._meter.terminate()
+            if not self._meter.waitForFinished(100):
+                self._meter.kill()
+                self._meter.waitForFinished(100)
+        self._pcm.clear()
+        self._peak = 0.0
+        self.level_changed.emit(-60.0)
 
     def _start_meter(self):
         self._meter_started = True
@@ -495,10 +522,12 @@ class VoiceController(QObject):
             self._fail("Não foi possível iniciar o motor de áudio")
 
     def _meter_finished(self, *_):
-        if self._running and self._active:
+        if self._meter_started and self._running and self._active:
             self._recover("Reconectando o medidor de áudio…")
 
     def _meter_error(self, error):
+        if not self._meter_started:
+            return
         if self._running and error == QProcess.ProcessError.FailedToStart:
             self._fail("Não foi possível abrir o medidor de nível")
         elif self._running and self._active:

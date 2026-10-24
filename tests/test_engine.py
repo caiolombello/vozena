@@ -42,6 +42,28 @@ class EngineResponsivenessTests(unittest.TestCase):
             QApplication.processEvents()
             time.sleep(.005)
 
+    def test_level_meter_only_reads_while_the_window_wants_it(self):
+        """An active reader keeps the Yeti capturing even with no meeting."""
+        self.controller = controller = VoiceController()
+        controller._running = controller._active = True
+        statuses = []
+        controller.status_changed.connect(statuses.append)
+        with patch.object(controller._meter, "start") as start:
+            controller.set_meter_wanted(False)
+            controller._parameters_pending = True
+            controller._parameters_finished(0, None)
+            start.assert_not_called()
+            controller.set_meter_wanted(True)
+            self.assertEqual(start.call_count, 1)
+            self.assertTrue(controller._level_timer.isActive())
+            controller.set_meter_wanted(False)
+        self.assertFalse(controller._meter_started)
+        self.assertFalse(controller._level_timer.isActive())
+        controller._meter_finished()
+        controller._meter_error(QProcess.ProcessError.Crashed)
+        self.assertNotIn("Reconectando o medidor de áudio…", statuses)
+        self.assertTrue(controller.active)
+
     def test_pipewire_tools_run_without_library_log_noise(self):
         process = PipeWireProcess()
         with patch.dict(os.environ, {"PIPEWIRE_DEBUG": "4", "HOME_MARKER": "kept"}):

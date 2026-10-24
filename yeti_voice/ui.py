@@ -4,7 +4,7 @@ from collections.abc import Callable
 import math
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSignalBlocker, QTimer
+from PySide6.QtCore import QEvent, Qt, QSignalBlocker, QTimer
 from PySide6.QtGui import QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -109,6 +109,25 @@ class MainWindow(QMainWindow):
             self._set_voice_clip(voice_test.has_clip)
             self._set_voice_state(voice_test.state)
             self._set_voice_progress(0)
+        self._update_meter_demand()
+
+    def _update_meter_demand(self):
+        set_wanted = getattr(self._controller, "set_meter_wanted", None)
+        if set_wanted is not None:
+            set_wanted(self.isVisible() and not self.isMinimized())
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._update_meter_demand()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._update_meter_demand()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._update_meter_demand()
 
     @staticmethod
     def _label(text, role="help"):
