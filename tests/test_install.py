@@ -5,8 +5,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from yeti_voice.install import PLUGIN_PATHS, install
+from yeti_voice.plugins import system_entry
 
 
 class InstallTests(unittest.TestCase):
@@ -63,6 +65,23 @@ class InstallTests(unittest.TestCase):
         repeated = install(source_dir=self.source, home=self.home)
         self.assertEqual(repeated.release, result.release)
         self.assertEqual(repeated.current.resolve(), result.release)
+
+    def test_distribution_lsp_is_referenced_not_copied(self):
+        manifest_path = self.source / ".deps/manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["lsp"] = system_entry("/usr/lib/ladspa/lsp-plugins-ladspa.so")
+        manifest_path.write_text(json.dumps(manifest))
+        with patch("yeti_voice.install.verify_system_plugin") as verify:
+            result = install(source_dir=self.source, home=self.home)
+            verify.assert_called_with("lsp", "/usr/lib/ladspa/lsp-plugins-ladspa.so")
+            self.assertEqual(json.loads((result.release / ".deps/manifest.json").read_text())["lsp"],
+                             manifest["lsp"])
+            self.assertFalse((result.release / ".deps" / PLUGIN_PATHS["lsp"]).exists())
+            self.assertTrue((result.release / ".deps" / PLUGIN_PATHS["rnnoise"]).is_file())
+            self.assertEqual(install(source_dir=self.source, home=self.home).release, result.release)
+        with patch("yeti_voice.install.verify_system_plugin", side_effect=ValueError("sem controles")):
+            with self.assertRaisesRegex(ValueError, "sem controles"):
+                install(source_dir=self.source, home=self.home)
 
     def test_rejects_unowned_install_root_without_touching_it(self):
         root = self.home / ".local/share/yeti-voice"

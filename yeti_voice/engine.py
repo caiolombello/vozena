@@ -8,18 +8,45 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 
-from PySide6.QtCore import QObject, QProcess, QTimer, Signal
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
+from .plugins import is_system, verify_system_plugin
 from .processing import CAPTURE_NODE, OUTPUT_NODE, ROOT, make_config, props_payload, serialize_config
 from .settings import Settings
+from .speech import SpeechDetector
 
 # pw-cat capture streams that may only read Vozena's own nodes. When an explicit
 # target is also the system default, WirePlumber marks the linked stream to
 # "follow default"; with node.dont-fallback alone, its next rescan destroys the
 # stream ("defined target not found", reproduced with WirePlumber 0.5.13 on
 # Ubuntu 26.04). node.dont-reconnect keeps the stream pinned to its target.
-PINNED_CAPTURE = "--properties={ node.dont-fallback = true node.dont-reconnect = true }"
+def pinned_capture(node_name):
+    """pw-cat properties for a capture stream that only reads its own target.
+
+    Helper streams are named yeti_voice.* so they never count as an app
+    that is using Yeti Processado.
+    """
+    return ("--properties={ node.dont-fallback = true node.dont-reconnect = true "
+            f'node.name = "{node_name}" }}')
+
+
+class PipeWireProcess(QProcess):
+    """A QProcess for PipeWire tools with library logging switched off.
+
+    Without RTKit, or with PIPEWIRE_DEBUG set by the user, every client logs
+    warnings to stderr. pw-cli reports failures only on stderr (it exits 0),
+    so stderr must stay meaningful: tool errors such as "Error: ..." are
+    printed directly and remain visible with PIPEWIRE_DEBUG=0. The
+    environment is read at each start, like a plain QProcess.
+    """
+
+    def start(self, program, arguments=()):
+        environment = QProcessEnvironment.systemEnvironment()
+        environment.insert("PIPEWIRE_DEBUG", "0")
+        self.setProcessEnvironment(environment)
+        super().start(program, list(arguments))
 
 
 def graph_snapshot():
@@ -30,6 +57,46 @@ def graph_snapshot():
 
 def node_named(objects, name):
     return next((row for row in objects if row.get("info", {}).get("props", {}).get("node.name") == name), None)
+
+
+def default_node_name(objects, key):
+    """Name stored under a "default" metadata key, e.g. default.audio.source."""
+    for row in objects:
+        if row.get("props", {}).get("metadata.name") == "default":
+            for item in row.get("metadata", []):
+                if item.get("key") == key:
+                    value = item.get("value")
+                    if isinstance(value, str):
+                        # Other programs can write metadata; a bad value is ignored.
+                        try:
+                            value = json.loads(value)
+                        except ValueError:
+                            return None
+                    if isinstance(value, dict) and isinstance(value.get("name"), str):
+                        return value["name"]
+    return None
+
+
+def node_consumers(objects, name):
+    """Apps reading from the named node, without Vozena's own helper streams."""
+    target = node_named(objects, name)
+    if target is None:
+        return []
+    nodes = {row.get("id"): row for row in objects if row.get("type") == "PipeWire:Interface:Node"}
+    consumers = []
+    for row in objects:
+        info = row.get("info") or {}
+        if (row.get("type") != "PipeWire:Interface:Link" or info.get("output-node-id") != target.get("id")
+                or info.get("state") in ("error", "unlinked")):
+            continue
+        props = nodes.get(info.get("input-node-id"), {}).get("info", {}).get("props", {})
+        if str(props.get("node.name", "")).startswith("yeti_voice."):
+            continue
+        label = (props.get("application.name") or props.get("node.description")
+                 or props.get("application.process.binary") or props.get("node.name"))
+        if label and label not in consumers:
+            consumers.append(str(label))
+    return consumers
 
 
 def find_yeti(objects):
@@ -44,6 +111,14 @@ def check_dependencies():
             raise RuntimeError(f"Componente de áudio ausente: {command}")
     manifest = json.loads((ROOT / ".deps/manifest.json").read_text())
     for label, item in manifest.items():
+        if is_system(item):
+            # Distribution plugins change with system updates: check safety and
+            # controls (cached per file version) instead of a pinned hash.
+            try:
+                verify_system_plugin(label, item["path"])
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                raise RuntimeError(str(error)) from error
+            continue
         path = ROOT / ".deps" / item["path"]
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != item["sha256"]:
             raise RuntimeError(f"Filtro {label} ausente ou diferente da versão preparada")
@@ -57,6 +132,11 @@ class VoiceController(QObject):
     error_occurred = Signal(str)
     active_changed = Signal(bool)
     muted_changed = Signal(bool)
+    consumers_changed = Signal(list)
+    # Yeti Processado is the system default input; configured default name.
+    default_source_changed = Signal(bool, str)
+    talking_while_muted = Signal()
+    monitoring_changed = Signal(bool)
 
     def __init__(self, parent=None, *, meter_enabled=True):
         super().__init__(parent)
@@ -80,6 +160,9 @@ class VoiceController(QObject):
         self._temporary = None
         self._generation = 0
         self._meter_enabled = meter_enabled
+        # Any active reader keeps the passive capture (and the Yeti) running,
+        # so levels are read only while the window is on screen.
+        self._meter_wanted = True
         self._meter_started = False
         self._parameters_dirty = False
         self._parameters_pending = False
@@ -87,21 +170,38 @@ class VoiceController(QObject):
         self._pcm = bytearray()
         self._peak = 0.0
         self._diagnostics = bytearray()
-        self._worker = QProcess(self)
+        self._consumers = []
+        self._default_state = (False, "")
+        # Passive reader of the raw Yeti, only while muted in a meeting: it never
+        # wakes the microphone, it only hears what the meeting already opened.
+        self._mute_watch = PipeWireProcess(self)
+        self._mute_watch.readyReadStandardOutput.connect(self._read_mute_watch)
+        self._mute_watch_enabled = True
+        self._speech = SpeechDetector()
+        self._last_talk_alert = -math.inf
+        # Low-latency return of the processed voice to the current output.
+        self._monitor = PipeWireProcess(self)
+        self._monitor.finished.connect(self._monitor_stopped)
+        self._monitor.errorOccurred.connect(self._monitor_error)
+        self._monitoring = False
+        self._metadata = PipeWireProcess(self)
+        self._metadata.finished.connect(self._metadata_finished)
+        self._metadata.errorOccurred.connect(self._metadata_error)
+        self._worker = PipeWireProcess(self)
         self._worker.readyReadStandardError.connect(self._worker_stderr)
         self._worker.finished.connect(self._worker_finished)
         self._worker.errorOccurred.connect(self._worker_error)
-        self._meter = QProcess(self)
+        self._meter = PipeWireProcess(self)
         self._meter.readyReadStandardOutput.connect(self._read_meter)
         self._meter.finished.connect(self._meter_finished)
         self._meter.errorOccurred.connect(self._meter_error)
-        self._probe = QProcess(self)
+        self._probe = PipeWireProcess(self)
         self._probe.finished.connect(self._probe_finished)
         self._probe.errorOccurred.connect(self._probe_error)
         self._probe_deadline = QTimer(self)
         self._probe_deadline.setSingleShot(True)
         self._probe_deadline.timeout.connect(self._probe_timeout)
-        self._parameters = QProcess(self)
+        self._parameters = PipeWireProcess(self)
         self._parameters.finished.connect(self._parameters_finished)
         self._parameters.errorOccurred.connect(self._parameters_error)
         self._parameters_deadline = QTimer(self)
@@ -178,12 +278,128 @@ class VoiceController(QObject):
         else:
             self.status_changed.emit("Serviço de áudio indisponível")
 
+    @property
+    def consumers(self):
+        return list(self._consumers)
+
+    @property
+    def is_default_source(self):
+        return self._default_state[0]
+
+    @property
+    def configured_default_source(self):
+        return self._default_state[1]
+
+    def _publish_usage(self, objects):
+        consumers = node_consumers(objects, OUTPUT_NODE) if self._running else []
+        if consumers != self._consumers:
+            self._consumers = consumers
+            self.consumers_changed.emit(list(consumers))
+        self._update_mute_watch()
+        state = (default_node_name(objects, "default.audio.source") == OUTPUT_NODE,
+                 default_node_name(objects, "default.configured.audio.source") or "")
+        if state != self._default_state:
+            self._default_state = state
+            self.default_source_changed.emit(*state)
+
+    def _clear_consumers(self):
+        if self._consumers:
+            self._consumers = []
+            self.consumers_changed.emit([])
+        self._update_mute_watch()
+
+    def set_mute_watch_enabled(self, enabled):
+        self._mute_watch_enabled = bool(enabled)
+        self._update_mute_watch()
+
+    def _update_mute_watch(self):
+        wanted = (self._mute_watch_enabled and self._running and self._muted
+                  and bool(self._consumers) and bool(self._source))
+        running = self._mute_watch.state() != QProcess.ProcessState.NotRunning
+        if wanted and not running:
+            self._speech = SpeechDetector()
+            self._mute_watch.start("pw-cat", [
+                "--record", "--raw", "--format=f32", "--rate=48000", "--channels=1",
+                "--latency=20ms", "--target=" + self._source,
+                "--properties={ node.passive = true node.dont-fallback = true node.dont-reconnect = true "
+                'node.name = "yeti_voice.mute-watch" }', "-"])
+        elif not wanted and running:
+            self._mute_watch.terminate()
+            if not self._mute_watch.waitForFinished(100):
+                self._mute_watch.kill()
+                self._mute_watch.waitForFinished(100)
+
+    def _read_mute_watch(self):
+        payload = bytes(self._mute_watch.readAllStandardOutput())
+        if self._muted and self._speech.feed(payload):
+            now = time.monotonic()
+            if now - self._last_talk_alert >= 30:
+                self._last_talk_alert = now
+                self.talking_while_muted.emit()
+
+    @property
+    def monitoring(self):
+        return self._monitoring
+
+    def set_monitoring(self, enabled):
+        enabled = bool(enabled) and self._running
+        if enabled == self._monitoring:
+            return
+        self._monitoring = enabled
+        if enabled:
+            self._monitor.start("pw-loopback", [
+                "--name", "yeti_voice.monitor", "-c", "1", "-m", "[ MONO ]", "-l", "20",
+                "-C", OUTPUT_NODE,
+                "--capture-props", '{ node.name = "yeti_voice.monitor.capture" '
+                                   "node.dont-fallback = true node.dont-reconnect = true }",
+                "--playback-props", '{ node.name = "yeti_voice.monitor.playback" '
+                                    'node.description = "Vozena · retorno da voz" }'])
+        elif self._monitor.state() != QProcess.ProcessState.NotRunning:
+            self._monitor.terminate()
+            if not self._monitor.waitForFinished(100):
+                self._monitor.kill()
+                self._monitor.waitForFinished(100)
+        self.monitoring_changed.emit(enabled)
+
+    def _monitor_stopped(self, *_):
+        if self._monitoring:
+            self._monitoring = False
+            self.monitoring_changed.emit(False)
+
+    def _monitor_error(self, error):
+        if error == QProcess.ProcessError.FailedToStart:
+            self.error_occurred.emit("Não foi possível iniciar o retorno da voz (pw-loopback).")
+            self._monitor_stopped()
+
+    def set_default_source(self, name):
+        """Configure the system default input; None lets WirePlumber choose."""
+        if self._metadata.state() != QProcess.ProcessState.NotRunning:
+            return False
+        if name:
+            arguments = ["-n", "default", "0", "default.configured.audio.source",
+                         json.dumps({"name": name}), "Spa:String:JSON"]
+        else:
+            arguments = ["-n", "default", "-d", "0", "default.configured.audio.source"]
+        self._metadata.start("pw-metadata", arguments)
+        return True
+
+    def _metadata_finished(self, exit_code, _status):
+        errors = bytes(self._metadata.readAllStandardError()).strip()
+        if exit_code != 0 or errors:
+            self.error_occurred.emit("Não foi possível alterar o microfone padrão do sistema.")
+        self.refresh()
+
+    def _metadata_error(self, error):
+        if error == QProcess.ProcessError.FailedToStart:
+            self.error_occurred.emit("Não foi possível alterar o microfone padrão do sistema.")
+
     def _inspect_graph(self, objects):
         source = find_yeti(objects)
         description = source["info"]["props"].get("alsa.card_name", "Blue Yeti") if source else ""
         if description != self._description:
             self._description = description
             self.device_changed.emit(description)
+        self._publish_usage(objects)
         if self._start_requested:
             if not source:
                 self._start_requested = False
@@ -287,6 +503,7 @@ class VoiceController(QObject):
     def set_mute(self, muted):
         self._set_muted(bool(muted))
         self._push_parameters()
+        self._update_mute_watch()
 
     def _set_muted(self, muted):
         muted = bool(muted)
@@ -327,7 +544,7 @@ class VoiceController(QObject):
 
     def _retry(self):
         if self._active and not self._suspended and not self._running and not self._starting:
-            processes = (self._probe, self._parameters, self._meter, self._worker)
+            processes = (self._probe, self._parameters, self._meter, self._worker, self._mute_watch)
             if any(process.state() != QProcess.ProcessState.NotRunning for process in processes):
                 self._retry_timer.start(200)
                 return
@@ -343,6 +560,7 @@ class VoiceController(QObject):
     def _recover(self, message):
         if not self._active or self._stopping:
             return
+        self.set_monitoring(False)
         self._recovering = True
         self._retrying = True
         self._generation += 1
@@ -359,7 +577,7 @@ class VoiceController(QObject):
         self._parameters_deadline.stop()
         self._level_timer.stop()
         self._refresh_timer.stop()
-        processes = (self._probe, self._parameters, self._meter, self._worker)
+        processes = (self._probe, self._parameters, self._meter, self._worker, self._mute_watch)
         process_ids = []
         for process in processes:
             if process.state() != QProcess.ProcessState.NotRunning:
@@ -373,6 +591,7 @@ class VoiceController(QObject):
         self._capture_id = None
         self._pcm.clear()
         self._peak = 0.0
+        self._clear_consumers()
         self.running_changed.emit(False)
         self.level_changed.emit(-60.0)
         self.status_changed.emit(message)
@@ -410,7 +629,7 @@ class VoiceController(QObject):
             else:
                 self.status_changed.emit("Microfone processado silenciado" if self._muted else
                     ("Áudio original" if self._bypass else "Escolha Yeti Processado na chamada"))
-                if self._meter_enabled and not self._meter_started:
+                if self._meter_enabled and self._meter_wanted and not self._meter_started:
                     self._start_meter()
 
     def _parameters_error(self, error):
@@ -434,13 +653,37 @@ class VoiceController(QObject):
             self._parameter_failure_pending = True
             self.refresh()
 
+    def set_meter_wanted(self, wanted):
+        wanted = bool(wanted)
+        if wanted == self._meter_wanted:
+            return
+        self._meter_wanted = wanted
+        if not wanted:
+            self._stop_meter()
+        elif (self._running and self._meter_enabled and not self._meter_started
+              and not self._parameters_pending):
+            self._start_meter()
+
+    def _stop_meter(self):
+        # Cleared first so the finished/error signals of this stop are ignored.
+        self._meter_started = False
+        self._level_timer.stop()
+        if self._meter.state() != QProcess.ProcessState.NotRunning:
+            self._meter.terminate()
+            if not self._meter.waitForFinished(100):
+                self._meter.kill()
+                self._meter.waitForFinished(100)
+        self._pcm.clear()
+        self._peak = 0.0
+        self.level_changed.emit(-60.0)
+
     def _start_meter(self):
         self._meter_started = True
         self._pcm.clear()
         self._peak = 0.0
         self._meter.start("pw-cat", ["--record", "--raw", "--format=f32", "--rate=48000",
                                      "--channels=1", "--latency=20ms", "--target=" + OUTPUT_NODE,
-                                     PINNED_CAPTURE, "-"])
+                                     pinned_capture("yeti_voice.meter"), "-"])
         self._level_timer.start()
 
     def _read_meter(self):
@@ -478,10 +721,12 @@ class VoiceController(QObject):
             self._fail("Não foi possível iniciar o motor de áudio")
 
     def _meter_finished(self, *_):
-        if self._running and self._active:
+        if self._meter_started and self._running and self._active:
             self._recover("Reconectando o medidor de áudio…")
 
     def _meter_error(self, error):
+        if not self._meter_started:
+            return
         if self._running and error == QProcess.ProcessError.FailedToStart:
             self._fail("Não foi possível abrir o medidor de nível")
         elif self._running and self._active:
@@ -499,6 +744,7 @@ class VoiceController(QObject):
         self.error_occurred.emit(message)
 
     def stop(self):
+        self.set_monitoring(False)
         self._stopping = True
         self._generation += 1
         self._retry_timer.stop()
@@ -520,7 +766,7 @@ class VoiceController(QObject):
         self._level_timer.stop()
         self._refresh_timer.setInterval(2000)
         self._refresh_timer.start()
-        for process in (self._probe, self._parameters, self._meter, self._worker):
+        for process in (self._probe, self._parameters, self._meter, self._worker, self._mute_watch):
             if process.state() != QProcess.ProcessState.NotRunning:
                 process.terminate()
                 if not process.waitForFinished(100):
@@ -534,6 +780,7 @@ class VoiceController(QObject):
         self._pcm.clear()
         self._peak = 0.0
         self._stopping = False
+        self._clear_consumers()
         self.running_changed.emit(False)
         self.level_changed.emit(-60.0)
         self.status_changed.emit("Tratamento pausado")

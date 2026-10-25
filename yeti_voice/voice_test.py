@@ -11,11 +11,14 @@ import uuid
 
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
-from .engine import PINNED_CAPTURE, check_dependencies, find_yeti, node_named
+from .engine import PipeWireProcess, check_dependencies, default_node_name, find_yeti, node_named, pinned_capture
 from .processing import make_config, serialize_config
 from .settings import Settings
 
 SAMPLE_RATE = 48000
+# The Yeti's mute button delivers digital silence; any open microphone,
+# even in a quiet room, stays far above -80 dBFS.
+SILENCE_PEAK = 10 ** (-80 / 20)
 
 
 @dataclass(frozen=True)
@@ -27,6 +30,12 @@ class VoiceSample:
     @property
     def duration_seconds(self):
         return len(self.original) / (SAMPLE_RATE * 4)
+
+    @property
+    def original_peak(self):
+        samples = array("f")
+        samples.frombytes(self.original)
+        return max(map(abs, samples), default=0.0)
 
     def audio_for(self, mode):
         if mode not in ("original", "processed"):
@@ -68,16 +77,7 @@ def make_test_config(settings, source_name, *, output_node, capture_node, monito
 
 
 def default_sink(objects):
-    for row in objects:
-        if row.get('props', {}).get('metadata.name') == 'default':
-            for item in row.get('metadata', []):
-                if item.get('key') == 'default.audio.sink':
-                    value = item.get('value')
-                    if isinstance(value, str):
-                        value = json.loads(value)
-                    if isinstance(value, dict):
-                        return value.get('name')
-    return None
+    return default_node_name(objects, "default.audio.sink")
 
 
 class VoiceTestController(QObject):
@@ -115,10 +115,10 @@ class VoiceTestController(QObject):
         self._capture_name = ''
         self._output_name = ''
         self._stderr = {name: bytearray() for name in ('probe', 'worker', 'recorder', 'player')}
-        self._probe = QProcess(self)
-        self._worker = QProcess(self)
-        self._recorder = QProcess(self)
-        self._player = QProcess(self)
+        self._probe = PipeWireProcess(self)
+        self._worker = PipeWireProcess(self)
+        self._recorder = PipeWireProcess(self)
+        self._player = PipeWireProcess(self)
         for name, process in self._processes():
             process.readyReadStandardError.connect(lambda name=name: self._read_stderr(name))
             process.errorOccurred.connect(lambda error, name=name: self._process_error(name, error))
@@ -224,7 +224,7 @@ class VoiceTestController(QObject):
                     self._progress_timer.start()
                     self._recorder.start('pw-cat', ['--record', '--raw', '--format=f32', '--rate=48000',
                         '--channels=2', '--channel-map=FL,FR', '--latency=20ms',
-                        PINNED_CAPTURE, '--target=' + self._output_name,
+                        pinned_capture('yeti_voice.test.recorder'), '--target=' + self._output_name,
                         '--sample-count=' + str(self._duration * SAMPLE_RATE), '-'])
             elif self._purpose == 'play':
                 target = self._playback_target or default_sink(objects)
@@ -236,7 +236,7 @@ class VoiceTestController(QObject):
                 # Let WirePlumber route playback to the current output. Pinning the
                 # default sink with node.dont-fallback made WirePlumber 0.5.13
                 # (Ubuntu 26.04) destroy the stream right after linking, so nothing
-                # was heard. See PINNED_CAPTURE in engine.py.
+                # was heard. See pinned_capture() in engine.py.
                 target_args = ['--target=' + self._playback_target] if self._playback_target else []
                 self._player.start('pw-cat', ['--playback', '--raw', '--format=f32', '--rate=48000',
                     '--channels=1', '--channel-map=MONO', '--latency=20ms', *target_args, '-'])
@@ -269,6 +269,10 @@ class VoiceTestController(QObject):
                                                   frames=self._duration * SAMPLE_RATE)
         except ValueError:
             self._fail('A gravação ficou incompleta. Confira o Yeti e tente novamente.')
+            return
+        if sample.original_peak < SILENCE_PEAK:
+            self._fail('A gravação ficou em silêncio. Confira se o botão de mudo do Yeti está '
+                       'ativado (luz vermelha piscando) e grave de novo.')
             return
         self._stop_processes()
         self._sample = sample

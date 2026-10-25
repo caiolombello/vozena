@@ -18,15 +18,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import __version__
+from .plugins import BUNDLED, is_system, verify_system_plugin
 
 MANAGED_MARKER = "# Managed by Yeti Voz installer"
 ROOT_MARKER = ".yeti-voz-install.json"
 DESKTOP_MARKER = "X-YetiVoz-Managed=true"
 DESKTOP_IDENTITY = "Comment=Áudio local para chamadas e reuniões com Blue Yeti"
-PLUGIN_PATHS = {
-    "rnnoise": "rnnoise/linux-rnnoise/ladspa/librnnoise_ladspa.so",
-    "lsp": "lsp/usr/lib64/ladspa/lsp-plugins-ladspa.so",
-}
+PLUGIN_PATHS = BUNDLED
 
 
 @dataclass(frozen=True)
@@ -58,7 +56,9 @@ def _source_fingerprint(source: Path, manifest: dict) -> str:
         if path.is_file():
             digest.update(name.encode() + b"\0" + bytes.fromhex(_hash(path)))
     for name, relative in PLUGIN_PATHS.items():
-        digest.update(name.encode("ascii") + b"\0" + bytes.fromhex(manifest[name]["sha256"]))
+        entry = manifest[name]
+        pin = ("system:" + entry["path"]).encode() if is_system(entry) else bytes.fromhex(entry["sha256"])
+        digest.update(name.encode("ascii") + b"\0" + pin)
     return digest.hexdigest()[:12]
 
 
@@ -72,6 +72,12 @@ def _validate_dependencies(source: Path) -> dict:
         raise ValueError("O manifesto precisa declarar RNNoise e LSP.")
     for name, expected_path in PLUGIN_PATHS.items():
         entry = manifest.get(name)
+        if is_system(entry):
+            try:
+                verify_system_plugin(name, entry["path"])
+            except (OSError, ValueError) as exc:
+                raise ValueError(str(exc)) from exc
+            continue
         if not isinstance(entry, dict) or entry.get("path") != expected_path:
             raise ValueError(f"Caminho declarado inválido para o plugin {name}.")
         expected_hash = entry.get("sha256")
@@ -109,6 +115,8 @@ def _copy_release(source: Path, staging: Path, manifest: dict, build_id: str) ->
     (staging / ".deps").mkdir()
     shutil.copy2(source / ".deps/manifest.json", staging / ".deps/manifest.json")
     for name, relative in PLUGIN_PATHS.items():
+        if is_system(manifest[name]):
+            continue  # Provided and licensed by the distribution package.
         plugin = source / ".deps" / relative
         target = staging / ".deps" / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -129,6 +137,8 @@ def _copy_release(source: Path, staging: Path, manifest: dict, build_id: str) ->
     )
     # Verify the copied bytes, rather than trusting the source after the copy.
     for name, relative in PLUGIN_PATHS.items():
+        if is_system(manifest[name]):
+            continue
         if _hash(staging / ".deps" / relative) != manifest[name]["sha256"]:
             raise ValueError(f"A cópia do plugin {name} falhou na verificação SHA-256.")
 
@@ -254,6 +264,8 @@ def install(*, source_dir: Path | str | None = None, home: Path | str | None = N
         if _source_fingerprint(release, manifest) != build_id:
             raise ValueError(f"A versão instalada foi alterada após a cópia: {release}")
         for name, relative in PLUGIN_PATHS.items():
+            if is_system(manifest[name]):
+                continue
             if not (release / ".deps" / relative).is_file() or _hash(release / ".deps" / relative) != manifest[name]["sha256"]:
                 raise ValueError(f"A versão instalada tem o plugin {name} alterado; remova-a manualmente antes de reinstalar.")
 

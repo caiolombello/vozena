@@ -62,11 +62,25 @@ class DistributionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "26.04/26.10 x86_64 only"):
                     prepare.check_platform()
 
-    def test_platform_rejects_older_glibc(self):
-        with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": "26.04"}):
-            with patch.object(prepare.platform, "libc_ver", return_value=("glibc", "2.39")):
-                with self.assertRaisesRegex(ValueError, "glibc >= 2.43"):
-                    prepare.check_platform()
+    def test_only_the_pinned_lsp_build_requires_glibc_2_43_and_cpio(self):
+        with patch.object(prepare.platform, "libc_ver", return_value=("glibc", "2.39")):
+            with self.assertRaisesRegex(ValueError, "glibc >= 2.43.*lsp-plugins-ladspa"):
+                prepare.check_pinned_lsp_requirements()
+        with patch.object(prepare.platform, "libc_ver", return_value=("glibc", "2.43")), \
+                patch.object(prepare.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(ValueError, "cpio"):
+                prepare.check_pinned_lsp_requirements()
+
+    def test_lsp_source_choice(self):
+        plugins = prepare.vozena_plugins(ROOT)
+        with patch.object(plugins, "find_system_plugin", return_value=Path("/usr/lib/ladspa/lsp-plugins-ladspa.so")) as find:
+            self.assertEqual(prepare.system_plugins(ROOT, "pinned"), {})
+            find.assert_not_called()
+            self.assertEqual(prepare.system_plugins(ROOT, "auto"), {"lsp": Path("/usr/lib/ladspa/lsp-plugins-ladspa.so")})
+        with patch.object(plugins, "find_system_plugin", return_value=None):
+            self.assertEqual(prepare.system_plugins(ROOT, "auto"), {})
+            with self.assertRaisesRegex(ValueError, "lsp-plugins-ladspa"):
+                prepare.system_plugins(ROOT, "system")
 
     def test_platform_rejects_other_architectures(self):
         with patch.object(prepare.platform, "machine", return_value="aarch64"):
@@ -191,3 +205,53 @@ class DistributionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless((ROOT / ".deps/rnnoise/LICENSE").is_file(), "needs prepared plugins")
+class SystemPluginPreparationTests(unittest.TestCase):
+    """The distribution LSP replaces the pinned RPM without downloading it."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+        (self.root / "scripts").mkdir()
+        (self.root / "scripts/plugins.lock.json").write_text((ROOT / "scripts/plugins.lock.json").read_text())
+        lock = prepare.plugin_lock(self.root)
+        for entry in (lock["rnnoise"], *lock["rnnoise"]["licenses"]):
+            target = self.root / ".deps" / entry["path"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes((ROOT / ".deps" / entry["path"]).read_bytes())
+        self.system = {"lsp": Path("/usr/lib/ladspa/lsp-plugins-ladspa.so")}
+        plugins = prepare.vozena_plugins(ROOT)
+        self.verify = patch.object(plugins, "verify_system_plugin")
+        self.verified = self.verify.start()
+        self.no_network = patch.object(prepare, "download", side_effect=AssertionError("no download"))
+        self.no_network.start()
+
+    def tearDown(self):
+        self.no_network.stop()
+        self.verify.stop()
+        self.directory.cleanup()
+
+    def manifest(self):
+        return json.loads((self.root / ".deps/manifest.json").read_text())
+
+    def test_system_lsp_is_recorded_and_verified_instead_of_downloaded(self):
+        prepare.prepare_plugins(self.root, self.system)
+        manifest = self.manifest()
+        self.assertEqual(manifest["lsp"]["provider"], "system")
+        self.assertEqual(manifest["lsp"]["path"], "/usr/lib/ladspa/lsp-plugins-ladspa.so")
+        self.assertEqual(manifest["rnnoise"], prepare.manifest_for(prepare.plugin_lock(self.root))["rnnoise"])
+        self.assertFalse((self.root / ".deps/lsp").exists())
+        self.verified.assert_called_with("lsp", self.system["lsp"], python=prepare.sys.executable)
+        prepare.check_plugins(self.root)
+
+    def test_generated_pinned_manifest_switches_but_foreign_one_is_preserved(self):
+        manifest = self.root / ".deps/manifest.json"
+        manifest.write_text(json.dumps(prepare.manifest_for(prepare.plugin_lock(self.root))))
+        prepare.prepare_plugins(self.root, self.system)
+        self.assertEqual(self.manifest()["lsp"]["provider"], "system")
+        manifest.write_text('{"lsp": {"path": "/tmp/evil.so", "provider": "system"}}')
+        with self.assertRaisesRegex(ValueError, "preserved"):
+            prepare.prepare_plugins(self.root, self.system)
+        self.assertIn("evil", manifest.read_text())

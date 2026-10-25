@@ -32,7 +32,9 @@ def wait_until(predicate, timeout=6):
 
 
 def parameters(node_id):
-    output = subprocess.check_output(["pw-cli", "enum-params", str(node_id), "Props"], text=True, timeout=2)
+    # pw-cli prints floats with the locale's decimal separator ("0,850000" in pt_BR).
+    output = subprocess.check_output(["pw-cli", "enum-params", str(node_id), "Props"], text=True, timeout=2,
+                                     env={**os.environ, "LC_ALL": "C"})
     return {name: (value == "true" if kind == "Bool" else float(value))
             for name, kind, value in re.findall(r'String "([^"\n]+)"\s+(Float|Int|Bool) (\S+)', output)}
 

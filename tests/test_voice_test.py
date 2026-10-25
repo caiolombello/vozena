@@ -67,9 +67,12 @@ while True: time.sleep(.1)
 import os, pathlib, sys, time
 root = pathlib.Path(os.environ['YETI_TEST_COMMAND_DIR'])
 with (root / 'calls.txt').open('a') as log: log.write(' '.join(sys.argv[1:]) + '\\n')
+if os.environ.get('PIPEWIRE_DEBUG') != '0':
+ # What every client prints without RTKit; it must not turn success into failure.
+ sys.stderr.write('W mod.rt: Realtime scheduling disabled: insufficient realtime privileges\\n')
 if '--record' in sys.argv:
  frames = int(next(arg.split('=')[1] for arg in sys.argv if arg.startswith('--sample-count=')))
- payload = array('f', [.25, .125] * frames).tobytes()
+ payload = array('f', [0.0, 0.0] if os.environ.get('YETI_TEST_SILENT') else [.25, .125]).tobytes() * frames
  if os.environ.get('YETI_TEST_SHORT_RECORD'): payload = payload[:len(payload)//2]
  time.sleep(float(os.environ.get('YETI_TEST_RECORD_DELAY', '.03')))
  sys.stdout.buffer.write(payload)
@@ -186,6 +189,15 @@ time.sleep(float(os.environ.get('YETI_TEST_PLAY_DELAY', '.03')))
         self.assertFalse(self.controller.has_clip)
         self.assertEqual(self.controller.state, 'idle')
         self.assertFalse((self.root / 'nodes.json').exists())
+
+    def test_silent_recording_points_to_the_yeti_mute_button(self):
+        with patch.dict(os.environ, {'YETI_TEST_SILENT': '1'}):
+            self.controller.record(Settings())
+            self.wait_until(lambda: bool(self.errors))
+        self.assertIn('silêncio', self.errors[0])
+        self.assertIn('mudo do Yeti', self.errors[0])
+        self.assertFalse(self.controller.has_clip)
+        self.assertEqual(self.controller.state, 'idle')
 
     def test_missing_yeti_never_falls_back_to_another_microphone(self):
         with patch.dict(os.environ, {'YETI_TEST_NO_DEVICE': '1'}):

@@ -6,11 +6,12 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from yeti_voice.settings import Settings
+from yeti_voice.processing import OUTPUT_NODE
+from yeti_voice.settings import Preferences, Settings
 from yeti_voice.ui import MainWindow
 
 
@@ -22,6 +23,9 @@ class FakeController(QObject):
     error_occurred = Signal(str)
     active_changed = Signal(bool)
     muted_changed = Signal(bool)
+    consumers_changed = Signal(list)
+    default_source_changed = Signal(bool, str)
+    monitoring_changed = Signal(bool)
 
     def __init__(self):
         super().__init__()
@@ -30,6 +34,9 @@ class FakeController(QObject):
         self.muted = False
         self.device_description = "Blue Yeti (teste)"
         self.calls = []
+        self.meter_wanted = []
+        self.mute_watch = []
+        self.monitoring = False
 
     def start(self, settings):
         self.calls.append(("start", settings))
@@ -45,6 +52,20 @@ class FakeController(QObject):
 
     def set_suspended(self, suspended):
         self.calls.append(("suspended", suspended))
+
+    def set_meter_wanted(self, wanted):
+        self.meter_wanted.append(wanted)
+
+    def set_default_source(self, name):
+        self.calls.append(("default_source", name))
+        return True
+
+    def set_mute_watch_enabled(self, enabled):
+        self.mute_watch.append(enabled)
+
+    def set_monitoring(self, enabled):
+        self.calls.append(("monitoring", enabled))
+        self.monitoring = enabled and self.running
 
     def stop(self):
         self.calls.append(("stop",))
@@ -102,6 +123,170 @@ class MainWindowTest(unittest.TestCase):
             self.saved.append,
             self.voice_test,
         )
+
+    def test_meeting_card_shows_which_app_receives_the_processed_voice(self):
+        self.assertIn("Ative o tratamento", self.window.destination_detail.text())
+        self.assertFalse(self.window.default_source_button.isEnabled())
+        self.controller.running_changed.emit(True)
+        self.assertIn("Nenhum app", self.window.destination_detail.text())
+        self.controller.consumers_changed.emit(["Google Chrome", "ZOOM VoiceEngine"])
+        self.assertEqual(self.window.destination_title.text(), "Em uso: Google Chrome, ZOOM VoiceEngine")
+        self.assertEqual(self.window.destination_card.property("tone"), "inUse")
+        self.controller.running_changed.emit(False)
+        self.assertEqual(self.window.destination_title.text(), "Selecione Yeti Processado como microfone")
+
+    def test_processed_microphone_can_become_default_and_be_restored(self):
+        saved = []
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append,
+                                 preferences=Preferences(), save_preferences=saved.append)
+        self.controller.default_source_changed.emit(False, "alsa_input.usb-yeti")
+        self.controller.running_changed.emit(True)
+        self.window.default_source_button.click()
+        self.assertEqual(self.controller.calls[-1], ("default_source", OUTPUT_NODE))
+        self.assertEqual(saved[-1].previous_default_source, "alsa_input.usb-yeti")
+        self.controller.default_source_changed.emit(True, OUTPUT_NODE)
+        self.assertEqual(self.window.default_source_button.text(), "Restaurar microfone anterior")
+        self.assertIn("microfone padrão do sistema", self.window.destination_detail.text())
+        self.controller.running_changed.emit(False)
+        self.assertTrue(self.window.default_source_button.isEnabled())
+        self.window.default_source_button.click()
+        self.assertEqual(self.controller.calls[-1], ("default_source", "alsa_input.usb-yeti"))
+        self.assertEqual(saved[-1].previous_default_source, "")
+
+    def test_autostart_toggle_writes_through_and_reflects_failures(self):
+        class Autostart:
+            def __init__(self, available=True):
+                self.state, self._available, self.fail = False, available, False
+            def available(self):
+                return self._available
+            def enabled(self):
+                return self.state
+            def set(self, enabled):
+                if self.fail:
+                    raise FileExistsError("entrada de outro app")
+                self.state = enabled
+        autostart = Autostart()
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append, autostart=autostart)
+        self.window.autostart_check.click()
+        self.assertTrue(autostart.state)
+        self.assertTrue(self.window.autostart_check.isChecked())
+        autostart.fail = True
+        self.window.autostart_check.click()
+        self.assertTrue(self.window.autostart_check.isChecked())
+        self.assertIn("entrada de outro app", self.window.error_label.text())
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append, autostart=Autostart(False))
+        self.assertFalse(self.window.autostart_check.isEnabled())
+        self.assertIn("instalado", self.window.autostart_help.text())
+
+    def test_activation_on_launch_waits_for_the_yeti(self):
+        saved = []
+        self.controller.device_description = ""
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(40, 15, 0.0), self.saved.append,
+                                 preferences=Preferences(activate_on_launch=True), save_preferences=saved.append)
+        self.assertTrue(self.window.activate_check.isChecked())
+        self.window.activate_when_ready()
+        self.assertFalse(any(call[0] == "start" for call in self.controller.calls))
+        self.assertIn("quando o Blue Yeti for conectado", self.window.status_label.text())
+        self.controller.device_changed.emit("Yeti Stereo Microphone")
+        self.assertEqual(self.controller.calls[-1], ("start", Settings(40, 15, 0.0)))
+        self.controller.device_changed.emit("")
+        self.controller.device_changed.emit("Yeti Stereo Microphone")
+        self.assertEqual(sum(call[0] == "start" for call in self.controller.calls), 1)
+        self.window.activate_check.click()
+        self.assertFalse(saved[-1].activate_on_launch)
+
+    def test_talking_while_muted_warning_can_be_turned_off(self):
+        saved = []
+        self.window.close()
+        self.controller.mute_watch.clear()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append,
+                                 preferences=Preferences(warn_when_muted=False), save_preferences=saved.append)
+        self.assertEqual(self.controller.mute_watch, [False])
+        self.assertFalse(self.window.warn_muted_check.isChecked())
+        self.window.warn_muted_check.click()
+        self.assertEqual(self.controller.mute_watch, [False, True])
+        self.assertTrue(saved[-1].warn_when_muted)
+
+    def test_custom_profiles_are_saved_loaded_replaced_and_deleted(self):
+        saved = []
+        self.window.close()
+        self.window = MainWindow(self.controller, Settings(), self.saved.append,
+                                 preferences=Preferences(), save_preferences=saved.append)
+        answers = iter(["  Ventilador   ligado ", "Ventilador ligado"])
+        confirmations = iter([False, True, True])
+        self.window._ask_profile_name = lambda suggestion: next(answers)
+        self.window._confirm = lambda question: next(confirmations)
+        self.assertFalse(self.window.delete_profile_button.isEnabled())
+        self.window.noise_slider.setValue(91)
+        self.window.save_profile_button.click()
+        self.assertEqual(saved[-1].profile_map, {"Ventilador ligado": Settings(91, 35, 0.0)})
+        self.assertEqual(self.window.preset_combo.currentText(), "Ventilador ligado")
+        self.assertTrue(self.window.delete_profile_button.isEnabled())
+
+        self.window.preset_combo.setCurrentText("Voz natural")
+        self.assertEqual(self.window._settings, Settings(40, 15, 0.0))
+        self.window.preset_combo.setCurrentText("Ventilador ligado")
+        self.assertEqual(self.window._settings, Settings(91, 35, 0.0))
+
+        self.window.noise_slider.setValue(60)
+        self.window.save_profile_button.click()  # declined replacement
+        self.assertEqual(saved[-1].profile_map, {"Ventilador ligado": Settings(91, 35, 0.0)})
+        self.assertEqual(self.window.preset_combo.currentText(), "Personalizado")
+        self.window.preset_combo.setCurrentText("Ventilador ligado")
+        self.window.delete_profile_button.click()
+        self.assertEqual(saved[-1].profiles, ())
+        self.assertEqual(self.window.preset_combo.currentText(), "Personalizado")
+        self.assertEqual(self.window.preset_combo.findText("Ventilador ligado"), -1)
+
+    def test_profile_names_cannot_replace_built_in_profiles(self):
+        self.window._ask_profile_name = lambda suggestion: "Reuniões"
+        self.window.save_profile_button.click()
+        self.assertIn("já é usado", self.window.error_label.text())
+
+    def test_live_return_asks_for_headphones_and_stops_when_hidden(self):
+        answers = iter([False, True])
+        self.window._confirm = lambda question: next(answers)
+        self.assertFalse(self.window.monitor_button.isEnabled())
+        self.controller.running = True
+        self.controller.running_changed.emit(True)
+        self.window.monitor_button.click()
+        self.assertEqual(self.controller.calls[-1], ("monitoring", False))
+        self.assertFalse(self.window.monitor_button.isChecked())
+        self.window.monitor_button.click()
+        self.assertEqual(self.controller.calls[-1], ("monitoring", True))
+        self.assertEqual(self.window.monitor_button.text(), "Parar de ouvir")
+        self.window.show()
+        QTest.qWait(10)
+        self.window.hide()
+        self.assertEqual(self.controller.calls[-1], ("monitoring", False))
+        self.controller.monitoring_changed.emit(False)
+        self.assertEqual(self.window.monitor_button.text(), "Ouvir ao vivo")
+
+    def test_meter_help_follows_activation_before_the_first_reading(self):
+        self.controller.running_changed.emit(True)
+        self.assertEqual(self.window.meter_help.text(), "Fale normalmente para acompanhar sua voz.")
+        self.controller.running_changed.emit(False)
+        self.assertEqual(self.window.meter_help.text(), "Ative o tratamento para acompanhar sua voz.")
+
+    def test_level_meter_follows_window_visibility(self):
+        self.assertEqual(self.controller.meter_wanted, [False])
+        self.window.show()
+        QTest.qWait(20)
+        self.window.setWindowState(Qt.WindowState.WindowMinimized)
+        QTest.qWait(20)
+        self.window.setWindowState(Qt.WindowState.WindowNoState)
+        self.window.show()
+        QTest.qWait(20)
+        self.window.hide()
+        self.assertEqual(self.controller.meter_wanted[0], False)
+        self.assertIn(True, self.controller.meter_wanted)
+        self.assertEqual(self.controller.meter_wanted[-1], False)
+        minimized_index = self.controller.meter_wanted.index(True) + 1
+        self.assertFalse(self.controller.meter_wanted[minimized_index])
 
     def test_starts_paused_and_requests_activation(self):
         self.assertEqual(self.window.state_label.text(), "Pausado")

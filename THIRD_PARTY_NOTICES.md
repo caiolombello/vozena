@@ -27,6 +27,8 @@ The Fedora RPM supplies `COPYING` and `COPYING.LESSER`; the preparer extracts an
 
 The pinned LSP binary is built for Fedora 44 x86_64 and requires glibc 2.43. It is verified and supported on Fedora 44 and Ubuntu 26.04/26.10 x86_64. It is not presented as a portable binary for older Fedora/Ubuntu releases or other distributions.
 
+When the distribution's `lsp-plugins-ladspa` package is installed and exposes every control Vozena sets, Vozena uses that copy instead of the pinned binary. It is then installed, updated, and licensed by the distribution (LGPL-3.0-or-later), and Vozena neither downloads nor redistributes it.
+
 ## Python and Qt runtime
 
 Vozena's isolated runtime installs these hash-pinned official PyPI wheels:

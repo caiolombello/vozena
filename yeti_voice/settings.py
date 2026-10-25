@@ -1,6 +1,6 @@
-"""The three user controls and meeting-oriented starting profiles."""
+"""Voice controls, meeting-oriented starting profiles and app preferences."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import math
 
 
@@ -35,3 +35,77 @@ PRESETS = {
     "Voz natural": Settings(40, 15, 0.0),
     "Ambiente ruidoso": Settings(95, 40, 0.0),
 }
+
+CUSTOM_LABEL = "Personalizado"
+PROFILE_NAME_LIMIT = 40
+
+
+def validate_profile_name(name):
+    if not isinstance(name, str):
+        raise ValueError("Nome de perfil inválido")
+    name = " ".join(name.split())
+    if not name:
+        raise ValueError("Dê um nome ao perfil")
+    if len(name) > PROFILE_NAME_LIMIT:
+        raise ValueError(f"O nome do perfil pode ter até {PROFILE_NAME_LIMIT} caracteres")
+    if name in PRESETS or name == CUSTOM_LABEL:
+        raise ValueError("Esse nome já é usado por um perfil do Vozena")
+    return name
+
+
+@dataclass(frozen=True)
+class Preferences:
+    activate_on_launch: bool = False
+    warn_when_muted: bool = True
+    # Input configured before "Yeti Processado" became the system default.
+    previous_default_source: str = ""
+    profiles: tuple = ()  # ((name, Settings), ...) in the user's order
+
+    def __post_init__(self):
+        if type(self.activate_on_launch) is not bool or type(self.warn_when_muted) is not bool:
+            raise ValueError("Preferência inválida")
+        if not isinstance(self.previous_default_source, str):
+            raise ValueError("Microfone anterior inválido")
+        names = []
+        for entry in self.profiles:
+            if (not isinstance(entry, tuple) or len(entry) != 2
+                    or not isinstance(entry[1], Settings)):
+                raise ValueError("Perfil inválido")
+            if validate_profile_name(entry[0]) != entry[0] or entry[0] in names:
+                raise ValueError("Perfil com nome inválido ou repetido")
+            names.append(entry[0])
+
+    @property
+    def profile_map(self):
+        return dict(self.profiles)
+
+    def with_profile(self, name, settings):
+        name = validate_profile_name(name)
+        profiles = [(key, value) for key, value in self.profiles if key != name]
+        profiles.append((name, settings))
+        return replace(self, profiles=tuple(profiles))
+
+    def without_profile(self, name):
+        return replace(self, profiles=tuple((key, value) for key, value in self.profiles if key != name))
+
+    def to_dict(self):
+        return {
+            "activate_on_launch": self.activate_on_launch,
+            "warn_when_muted": self.warn_when_muted,
+            "previous_default_source": self.previous_default_source,
+            "profiles": [{"name": name, **settings.to_dict()} for name, settings in self.profiles],
+        }
+
+    @classmethod
+    def from_dict(cls, values):
+        if not isinstance(values, dict):
+            raise ValueError("Preferências inválidas")
+        profiles = values.get("profiles", [])
+        if not isinstance(profiles, list) or not all(isinstance(item, dict) for item in profiles):
+            raise ValueError("Perfis inválidos")
+        return cls(
+            activate_on_launch=values.get("activate_on_launch", False),
+            warn_when_muted=values.get("warn_when_muted", True),
+            previous_default_source=values.get("previous_default_source", ""),
+            profiles=tuple((item.get("name"), Settings.from_dict(item)) for item in profiles),
+        )

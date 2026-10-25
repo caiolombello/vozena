@@ -1,19 +1,23 @@
 """Native controls for the local Yeti voice processor."""
 
 from collections.abc import Callable
+from dataclasses import replace
 import math
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSignalBlocker, QTimer
+from PySide6.QtCore import QEvent, Qt, QSignalBlocker, QTimer
 from PySide6.QtGui import QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -25,7 +29,8 @@ from PySide6.QtWidgets import (
 )
 
 from .calibration import analyze_voice_sample
-from .settings import PRESETS, Settings
+from .processing import OUTPUT_NODE
+from .settings import CUSTOM_LABEL, PRESETS, Preferences, Settings, validate_profile_name
 
 
 class _ScrollSafeComboBox(QComboBox):
@@ -53,11 +58,22 @@ class MainWindow(QMainWindow):
         settings: Settings,
         save_settings: Callable[[Settings], None],
         voice_test=None,
+        *,
+        preferences: Preferences | None = None,
+        save_preferences: Callable[[Preferences], None] | None = None,
+        autostart=None,
     ):
         super().__init__()
+        self._autostart = autostart
+        self._pending_activation = False
         self._controller = controller
         self._settings = settings
         self._save_settings = save_settings
+        self._preferences = preferences or Preferences()
+        self._save_preferences = save_preferences or (lambda _preferences: None)
+        self._consumers = list(getattr(controller, "consumers", []))
+        self._processed_is_default = bool(getattr(controller, "is_default_source", False))
+        self._configured_source = str(getattr(controller, "configured_default_source", ""))
         self._voice_test = voice_test
         self._voice_state = "idle"
         self._voice_has_clip = False
@@ -93,6 +109,12 @@ class MainWindow(QMainWindow):
             controller.active_changed.connect(self._set_active)
         if hasattr(controller, "muted_changed"):
             controller.muted_changed.connect(self._set_muted)
+        if hasattr(controller, "consumers_changed"):
+            controller.consumers_changed.connect(self._set_consumers)
+        if hasattr(controller, "default_source_changed"):
+            controller.default_source_changed.connect(self._set_default_source)
+        if hasattr(controller, "monitoring_changed"):
+            controller.monitoring_changed.connect(self._set_monitoring)
         if voice_test is not None:
             voice_test.state_changed.connect(self._set_voice_state)
             voice_test.progress_changed.connect(self._set_voice_progress)
@@ -109,6 +131,31 @@ class MainWindow(QMainWindow):
             self._set_voice_clip(voice_test.has_clip)
             self._set_voice_state(voice_test.state)
             self._set_voice_progress(0)
+        self._update_meter_demand()
+        set_mute_watch = getattr(controller, "set_mute_watch_enabled", None)
+        if set_mute_watch is not None:
+            set_mute_watch(self._preferences.warn_when_muted)
+
+    def _update_meter_demand(self):
+        set_wanted = getattr(self._controller, "set_meter_wanted", None)
+        if set_wanted is not None:
+            set_wanted(self.isVisible() and not self.isMinimized())
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._update_meter_demand()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._update_meter_demand()
+        # The live return is a tuning aid; never leave it playing unseen.
+        if getattr(self._controller, "monitoring", False):
+            self._controller.set_monitoring(False)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self._update_meter_demand()
 
     @staticmethod
     def _label(text, role="help"):
@@ -240,6 +287,7 @@ class MainWindow(QMainWindow):
             comparison_page = self._tab_page("Comparar áudio")
             self._build_voice_test(comparison_page)
             self._build_calibration(calibration_page)
+        self._build_preferences(self._tab_page("Preferências"))
 
         footer = QHBoxLayout()
         self.shortcut_label = self._label("Atalho global: verificando…", "footer")
@@ -250,11 +298,28 @@ class MainWindow(QMainWindow):
         page.addLayout(footer)
 
     def _build_microphone(self, page):
-        destination, route = self._card("destinationCard")
-        route.setContentsMargins(16, 12, 16, 12)
-        route.setSpacing(3)
+        destination = QFrame()
+        destination.setObjectName("destinationCard")
+        row = QHBoxLayout(destination)
+        row.setContentsMargins(16, 10, 16, 10)
+        row.setSpacing(12)
+        route = QVBoxLayout()
+        route.setSpacing(2)
         route.addWidget(self._label("NA SUA REUNIÃO", "eyebrow"))
-        route.addWidget(self._label("Selecione Yeti Processado como microfone", "destination"))
+        self.destination_card = destination
+        self.destination_title = self._label("Selecione Yeti Processado como microfone", "destination")
+        self.destination_title.setAccessibleName("Uso do Yeti Processado")
+        route.addWidget(self.destination_title)
+        self.destination_detail = self._label("", "destinationDetail")
+        route.addWidget(self.destination_detail)
+        row.addLayout(route, 1)
+        self.default_source_button = QPushButton("Usar como microfone padrão")
+        self.default_source_button.setObjectName("quietButton")
+        self.default_source_button.setToolTip(
+            "Faz os apps que usam o microfone padrão do sistema receberem sua voz tratada")
+        self.default_source_button.clicked.connect(self._toggle_default_source)
+        self.default_source_button.setVisible(hasattr(self._controller, "set_default_source"))
+        row.addWidget(self.default_source_button, 0, Qt.AlignmentFlag.AlignVCenter)
         page.addWidget(destination)
 
         controls_card, controls = self._card()
@@ -264,15 +329,27 @@ class MainWindow(QMainWindow):
         self.preset_combo = _ScrollSafeComboBox()
         self.preset_combo.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.preset_combo.setObjectName("presetCombo")
-        self.preset_combo.addItems([*PRESETS, "Personalizado"])
         self.preset_combo.setAccessibleName("Perfil de voz")
         self.preset_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.preset_combo.currentTextChanged.connect(self._preset_changed)
         preset_label.setBuddy(self.preset_combo)
+        self.save_profile_button = QPushButton("Salvar")
+        self.save_profile_button.setObjectName("quietButton")
+        self.save_profile_button.setToolTip("Salvar os ajustes atuais como um perfil seu")
+        self.save_profile_button.setAccessibleName("Salvar perfil de voz")
+        self.save_profile_button.clicked.connect(self._save_profile)
+        self.delete_profile_button = QPushButton("Excluir")
+        self.delete_profile_button.setObjectName("quietButton")
+        self.delete_profile_button.setToolTip("Excluir o perfil selecionado")
+        self.delete_profile_button.setAccessibleName("Excluir perfil de voz")
+        self.delete_profile_button.clicked.connect(self._delete_profile)
         preset_row.addWidget(preset_label)
         preset_row.addStretch()
         preset_row.addWidget(self.preset_combo, 1)
+        preset_row.addWidget(self.save_profile_button)
+        preset_row.addWidget(self.delete_profile_button)
         controls.addLayout(preset_row)
+        self._rebuild_presets()
         self.noise_slider, self.noise_value = self._add_slider(
             controls, "Redução de ruído", "Suaviza sons constantes do ambiente", 0, 100, "noiseSlider")
         self.clarity_slider, self.clarity_value = self._add_slider(
@@ -306,8 +383,19 @@ class MainWindow(QMainWindow):
         self.saturation_label = self._label("Pico muito alto — reduza o volume da voz", "warning")
         self.saturation_label.hide()
         meter.addWidget(self.saturation_label)
+        meter_bottom = QHBoxLayout()
+        meter_bottom.setSpacing(10)
         self.meter_help = self._label("Ative o tratamento para acompanhar sua voz.")
-        meter.addWidget(self.meter_help)
+        meter_bottom.addWidget(self.meter_help, 1)
+        self.monitor_button = QPushButton("Ouvir ao vivo")
+        self.monitor_button.setObjectName("quietButton")
+        self.monitor_button.setCheckable(True)
+        self.monitor_button.setToolTip("Ouça nos fones a voz tratada enquanto ajusta os controles")
+        self.monitor_button.setAccessibleName("Ouvir a voz tratada ao vivo nos fones")
+        self.monitor_button.toggled.connect(self._toggle_monitoring)
+        self.monitor_button.setVisible(hasattr(self._controller, "set_monitoring"))
+        meter_bottom.addWidget(self.monitor_button, 0, Qt.AlignmentFlag.AlignBottom)
+        meter.addLayout(meter_bottom)
 
         signal_card, signal_layout = self._card()
         signal_layout.setContentsMargins(20, 14, 20, 14)
@@ -491,6 +579,67 @@ class MainWindow(QMainWindow):
         page.addWidget(self.calibration_result_card)
         page.addStretch()
 
+    def _build_preferences(self, page):
+        page.addWidget(self._label("Pronto antes da reunião", "pageTitle"))
+        page.addWidget(self._label("Deixe o Vozena preparado sem precisar abrir a janela.", "intro"))
+        card, layout = self._card()
+        self.autostart_check = QCheckBox("Iniciar o Vozena com o computador")
+        self.autostart_check.toggled.connect(self._set_autostart)
+        layout.addWidget(self.autostart_check)
+        self.autostart_help = self._label("")
+        layout.addWidget(self.autostart_help)
+        self.activate_check = QCheckBox("Ativar o tratamento ao abrir o Vozena")
+        self.activate_check.setChecked(self._preferences.activate_on_launch)
+        self.activate_check.toggled.connect(
+            lambda checked: self._update_preferences(activate_on_launch=bool(checked)))
+        layout.addWidget(self.activate_check)
+        layout.addWidget(self._label(
+            "O Yeti só capta áudio quando um app usa o Yeti Processado ou quando esta janela está "
+            "aberta. Se ele estiver desconectado, o tratamento começa assim que for conectado."))
+        self.warn_muted_check = QCheckBox("Avisar quando eu falar com o microfone silenciado")
+        self.warn_muted_check.setChecked(self._preferences.warn_when_muted)
+        self.warn_muted_check.toggled.connect(self._set_warn_when_muted)
+        layout.addWidget(self.warn_muted_check)
+        layout.addWidget(self._label(
+            "Só durante reuniões: o Vozena escuta o Yeti apenas enquanto o app de reunião já está "
+            "usando o microfone, e nada é gravado."))
+        page.addWidget(card)
+        page.addStretch()
+        self._refresh_autostart()
+
+    def _set_warn_when_muted(self, enabled):
+        self._update_preferences(warn_when_muted=bool(enabled))
+        set_enabled = getattr(self._controller, "set_mute_watch_enabled", None)
+        if set_enabled is not None:
+            set_enabled(bool(enabled))
+
+    def _refresh_autostart(self):
+        available = self._autostart is not None and self._autostart.available()
+        with QSignalBlocker(self.autostart_check):
+            self.autostart_check.setChecked(bool(self._autostart and self._autostart.enabled()))
+        self.autostart_check.setEnabled(available or self.autostart_check.isChecked())
+        self.autostart_help.setText(
+            "Ele abre na bandeja, sem mostrar a janela." if available else
+            "Disponível no Vozena instalado pelo menu de aplicativos.")
+
+    def _set_autostart(self, enabled):
+        try:
+            self._autostart.set(bool(enabled))
+        except OSError as error:
+            self._show_error(str(error))
+        self._refresh_autostart()
+
+    def activate_when_ready(self):
+        """Start the treatment now, or as soon as the Yeti is connected."""
+        self._pending_activation = True
+        self._try_pending_activation()
+        self._refresh_engine_state()
+
+    def _try_pending_activation(self):
+        if self._pending_activation and self._device_connected and not self._active:
+            self._pending_activation = False
+            self._controller.start(self._settings)
+
     @staticmethod
     def _add_slider(layout, title, description, minimum, maximum, object_name):
         block = QVBoxLayout()
@@ -548,19 +697,70 @@ class MainWindow(QMainWindow):
         self._sync_preset_name()
         self._update_timer.start()
 
+    def _profiles(self):
+        return {**PRESETS, **self._preferences.profile_map}
+
+    def _rebuild_presets(self):
+        with QSignalBlocker(self.preset_combo):
+            self.preset_combo.clear()
+            self.preset_combo.addItems(list(PRESETS))
+            if self._preferences.profiles:
+                self.preset_combo.insertSeparator(self.preset_combo.count())
+                self.preset_combo.addItems([name for name, _ in self._preferences.profiles])
+            self.preset_combo.insertSeparator(self.preset_combo.count())
+            self.preset_combo.addItem(CUSTOM_LABEL)
+        self._sync_preset_name()
+
     def _preset_changed(self, name):
-        if name not in PRESETS:
-            return
-        self._load_settings(PRESETS[name])
-        self._update_timer.start()
+        profiles = self._profiles()
+        if name in profiles:
+            self._load_settings(profiles[name])
+            self._update_timer.start()
+        self._update_profile_actions()
 
     def _sync_preset_name(self):
         name = next(
-            (name for name, values in PRESETS.items() if values == self._settings),
-            "Personalizado",
+            (name for name, values in self._profiles().items() if values == self._settings),
+            CUSTOM_LABEL,
         )
         with QSignalBlocker(self.preset_combo):
             self.preset_combo.setCurrentText(name)
+        self._update_profile_actions()
+
+    def _update_profile_actions(self):
+        if hasattr(self, "delete_profile_button"):
+            self.delete_profile_button.setEnabled(
+                self.preset_combo.currentText() in self._preferences.profile_map)
+
+    def _ask_profile_name(self, suggestion):
+        name, accepted = QInputDialog.getText(
+            self, "Salvar perfil de voz", "Nome do perfil (ex.: Ventilador ligado):", text=suggestion)
+        return name if accepted else None
+
+    def _confirm(self, question):
+        return QMessageBox.question(self, "Vozena", question) == QMessageBox.StandardButton.Yes
+
+    def _save_profile(self):
+        current = self.preset_combo.currentText()
+        name = self._ask_profile_name(current if current in self._preferences.profile_map else "")
+        if name is None:
+            return
+        try:
+            name = validate_profile_name(name)
+        except ValueError as error:
+            self._show_error(str(error))
+            return
+        if name in self._preferences.profile_map and not self._confirm(f"Substituir o perfil “{name}”?"):
+            return
+        self._update_preferences(profiles=self._preferences.with_profile(name, self._settings).profiles)
+        self._rebuild_presets()
+
+    def _delete_profile(self):
+        name = self.preset_combo.currentText()
+        if name not in self._preferences.profile_map or not self._confirm(f"Excluir o perfil “{name}”?"):
+            return
+        self._update_preferences(profiles=self._preferences.without_profile(name).profiles)
+        self._rebuild_presets()
 
     def _update_value_labels(self):
         self.noise_value.setText(f"{self.noise_slider.value()}%")
@@ -574,6 +774,7 @@ class MainWindow(QMainWindow):
         self._controller.update_settings(self._settings)
 
     def _toggle_running(self):
+        self._pending_activation = False
         if self._active:
             self._controller.stop()
         else:
@@ -597,8 +798,7 @@ class MainWindow(QMainWindow):
         if not self._has_active_contract:
             self._active = self._running
         self._refresh_engine_state()
-        if not self._running:
-            self._reset_meter()
+        self._reset_meter()
 
     def _set_active(self, active):
         self._active = bool(active)
@@ -614,6 +814,7 @@ class MainWindow(QMainWindow):
         self._reset_meter()
 
     def _refresh_engine_state(self):
+        self._refresh_destination()
         if self._running and self._muted:
             label, tone = "Silenciado", "muted"
         elif self._running:
@@ -634,16 +835,80 @@ class MainWindow(QMainWindow):
         self.start_button.setText(
             "Parar tratamento" if self._active else "Ativar tratamento"
         )
-        for button in (self.original_button, self.processed_button):
+        for button in (self.original_button, self.processed_button, self.monitor_button):
             button.setEnabled(self._running)
         self.mute_button.setEnabled(self._active)
         if self._running and self._muted:
             text = "Yeti Processado está sem áudio. Reative o microfone quando quiser falar."
         elif not self._device_connected and not self._active:
-            text = "Conecte o Blue Yeti por USB para começar."
+            text = ("O tratamento começa quando o Blue Yeti for conectado." if self._pending_activation
+                    else "Conecte o Blue Yeti por USB para começar.")
         else:
             text = self._status_text or "Pronto para ativar"
         self.status_label.setText(text)
+
+    def _confirm_headphones(self):
+        return self._confirm(
+            "Use fones de ouvido. Em alto-falantes, sua voz volta para o microfone e causa "
+            "microfonia. Ouvir a voz tratada agora?")
+
+    def _toggle_monitoring(self, enabled):
+        if enabled and not self._confirm_headphones():
+            enabled = False
+        self._controller.set_monitoring(enabled)
+        self._set_monitoring(getattr(self._controller, "monitoring", enabled))
+
+    def _set_monitoring(self, monitoring):
+        with QSignalBlocker(self.monitor_button):
+            self.monitor_button.setChecked(bool(monitoring))
+        self.monitor_button.setText("Parar de ouvir" if monitoring else "Ouvir ao vivo")
+
+    def _set_consumers(self, consumers):
+        self._consumers = [str(name) for name in consumers]
+        self._refresh_destination()
+
+    def _set_default_source(self, processed_is_default, configured):
+        self._processed_is_default = bool(processed_is_default)
+        self._configured_source = configured or ""
+        self._refresh_destination()
+
+    def _refresh_destination(self):
+        if not hasattr(self, "destination_title"):
+            return
+        in_use = self._running and bool(self._consumers)
+        if in_use:
+            self.destination_title.setText("Em uso: " + ", ".join(self._consumers))
+            detail = "Sua voz tratada está chegando a esse app."
+        else:
+            self.destination_title.setText("Selecione Yeti Processado como microfone")
+            detail = ("Nenhum app está usando o microfone tratado agora." if self._running else
+                      "Ative o tratamento para ele aparecer na lista de microfones.")
+        configured = self._configured_source == OUTPUT_NODE
+        if configured:
+            detail += " Ele é o microfone padrão do sistema."
+        self.destination_detail.setText(detail)
+        self.default_source_button.setText("Restaurar microfone anterior" if configured else "Usar como microfone padrão")
+        self.default_source_button.setEnabled(configured or self._running)
+        self.destination_card.setProperty("tone", "inUse" if in_use else "")
+        self.destination_card.style().unpolish(self.destination_card)
+        self.destination_card.style().polish(self.destination_card)
+
+    def _toggle_default_source(self):
+        if self._configured_source == OUTPUT_NODE:
+            previous = self._preferences.previous_default_source or None
+            if self._controller.set_default_source(previous):
+                self._update_preferences(previous_default_source="")
+        else:
+            previous = self._configured_source if self._configured_source != OUTPUT_NODE else ""
+            if self._controller.set_default_source(OUTPUT_NODE):
+                self._update_preferences(previous_default_source=previous)
+
+    def _update_preferences(self, **changes):
+        self._preferences = replace(self._preferences, **changes)
+        try:
+            self._save_preferences(self._preferences)
+        except OSError as error:
+            self._show_error(f"Não foi possível salvar as preferências: {error}")
 
     def _set_status(self, status):
         self._status_text = status or "Pronto"
@@ -654,6 +919,7 @@ class MainWindow(QMainWindow):
         self._device_connected = bool(description)
         self.device_label.setText(text)
         self.device_label.setToolTip(text)
+        self._try_pending_activation()
         self._refresh_engine_state()
 
     def _set_level(self, dbfs):
@@ -975,6 +1241,15 @@ class MainWindow(QMainWindow):
             QFrame#destinationCard { background: #172d2b;
                 border: 1px solid #294b45; border-radius: 10px; }
             QLabel#destination { color: #d0f4ea; font-weight: 600; }
+            QLabel#destinationDetail { color: #a9cfc6; font-size: 12px; }
+            QCheckBox { spacing: 10px; font-weight: 600; padding: 2px 0; }
+            QCheckBox::indicator { width: 18px; height: 18px; border-radius: 5px;
+                                   border: 1px solid #4b5d6b; background: #111820; }
+            QCheckBox::indicator:checked { background: #3be0c5; border-color: #3be0c5; }
+            QCheckBox::indicator:focus { border-color: #f1fffb; }
+            QCheckBox::indicator:disabled { background: #1c2630; border-color: #2b3845; }
+            QCheckBox:disabled { color: #82939f; }
+            QFrame#destinationCard[tone="inUse"] { background: #163a31; border-color: #3b8b77; }
             QFrame#stepCard[active="true"], QFrame#resultCard { background: #17322d;
                 border: 1px solid #3b8b77; border-radius: 12px; }
             QFrame#activityCard { background: #22343d;
