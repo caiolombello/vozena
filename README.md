@@ -12,7 +12,7 @@ Built for clean speech, reliable virtual audio devices, and clear local control.
 
 ---
 
-Vozena v0.4.2 is a public preview. It has been validated on:
+Vozena v0.5.0 is a public preview. It has been validated on:
 
 - Fedora 44 x86_64 with KDE Plasma, PipeWire 1.6, and the classic USB Blue Yeti (`USB b58e:9e84`)
 - Ubuntu and Kubuntu 26.04/26.10 x86_64: automated tests and PipeWire checks with a virtual microphone
@@ -45,15 +45,15 @@ The release is a clean source archive. It contains no vendored `.deps`, virtual 
 
    `lsp-plugins-ladspa` provides the compressor and limiter. Vozena uses your distribution's copy only after checking that it is owned by the system and exposes every control Vozena sets, so it keeps receiving your distribution's updates. Without that package, preparation downloads a pinned Fedora 44 build instead; it needs glibc 2.43 plus `rpm` and `cpio` on Fedora, or `rpm2cpio` and `cpio` on Ubuntu.
 
-2. In a browser, download `vozena-0.4.2-source.tar.gz` and `SHA256SUMS` from the [v0.4.2 release](https://github.com/caiolombello/vozena/releases/tag/v0.4.2). Put both files in the same directory, then verify the archive before extracting it:
+2. In a browser, download `vozena-0.5.0-source.tar.gz` and `SHA256SUMS` from the [v0.5.0 release](https://github.com/caiolombello/vozena/releases/tag/v0.5.0). Put both files in the same directory, then verify the archive before extracting it:
 
    ```bash
    sha256sum --check SHA256SUMS
-   tar -xzf vozena-0.4.2-source.tar.gz
-   cd vozena-0.4.2
+   tar -xzf vozena-0.5.0-source.tar.gz
+   cd vozena-0.5.0
    ```
 
-   Continue only if `sha256sum` reports `vozena-0.4.2-source.tar.gz: OK`.
+   Continue only if `sha256sum` reports `vozena-0.5.0-source.tar.gz: OK`.
 
 3. Prepare and install for your user:
 
