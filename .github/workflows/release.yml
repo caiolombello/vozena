@@ -80,5 +80,5 @@ jobs:
           else
             gh release create "$RELEASE_TAG" vozena-*-source.tar.gz SHA256SUMS \
               --repo "$GH_REPO" --verify-tag --title "Vozena $RELEASE_TAG" \
-              --notes 'Source release for Fedora 44 x86_64. Third-party binaries are downloaded separately from verified upstream archives. See README.md for installation and SHA256SUMS for asset integrity.'
+              --notes 'Source release for Fedora 44 and Ubuntu 26.04/26.10 x86_64. Third-party binaries are downloaded separately from verified upstream archives. See README.md for installation and SHA256SUMS for asset integrity.'
           fi

@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -36,8 +37,42 @@ class DistributionTests(unittest.TestCase):
 
     def test_platform_rejects_other_distributions_before_downloads(self):
         with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": "24.04"}):
-            with self.assertRaisesRegex(ValueError, "Fedora 44 x86_64 only"):
+            with self.assertRaisesRegex(ValueError, "Fedora 44 and Ubuntu 26.04/26.10 x86_64 only"):
                 prepare.check_platform()
+
+    def test_platform_accepts_fedora_44(self):
+        with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "fedora", "VERSION_ID": "44"}):
+            with patch.object(prepare.platform, "libc_ver", return_value=("glibc", "2.43")):
+                prepare.check_platform()
+
+    def test_platform_accepts_ubuntu_26_04(self):
+        with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": "26.04"}):
+            with patch.object(prepare.platform, "libc_ver", return_value=("glibc", "2.43")):
+                prepare.check_platform()
+
+    def test_platform_accepts_ubuntu_26_10_and_point_releases(self):
+        for version in ("26.10", "26.04.1"):
+            with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": version}):
+                with patch.object(prepare.platform, "libc_ver", return_value=("glibc", "2.44")):
+                    prepare.check_platform()
+
+    def test_platform_rejects_other_ubuntu_releases(self):
+        for version in ("25.10", "26.4", "27.04"):
+            with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": version}):
+                with self.assertRaisesRegex(ValueError, "26.04/26.10 x86_64 only"):
+                    prepare.check_platform()
+
+    def test_platform_rejects_older_glibc(self):
+        with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": "26.04"}):
+            with patch.object(prepare.platform, "libc_ver", return_value=("glibc", "2.39")):
+                with self.assertRaisesRegex(ValueError, "glibc >= 2.43"):
+                    prepare.check_platform()
+
+    def test_platform_rejects_other_architectures(self):
+        with patch.object(prepare.platform, "machine", return_value="aarch64"):
+            with patch.object(prepare.platform, "freedesktop_os_release", return_value={"ID": "ubuntu", "VERSION_ID": "26.04"}):
+                with self.assertRaisesRegex(ValueError, "x86_64 only"):
+                    prepare.check_platform()
 
     def test_bad_download_cache_is_preserved_without_network(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -70,6 +105,22 @@ class DistributionTests(unittest.TestCase):
             payload = prepare.archive_member(path, "zip", "linux-rnnoise/ladspa/plugin.so")
             self.assertEqual(payload, b"selected")
             self.assertEqual(sorted(p.name for p in Path(directory).iterdir()), ["plugins.zip"])
+
+    def test_archive_member_rpm_without_rpm2cpio(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pkg.rpm"
+            path.write_bytes(b"dummy")
+            # Mock _extract_rpm_payload returning a cpio stream with our member
+            with patch.object(prepare.shutil, "which", return_value=None):
+                with patch.object(prepare, "_extract_rpm_payload", return_value=b"cpio-stream"):
+                    with patch.object(prepare.subprocess, "run") as mock_run:
+                        mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"extracted-so")
+                        payload = prepare.archive_member(path, "rpm", "./usr/lib/plugin.so")
+                        self.assertEqual(payload, b"extracted-so")
+                        mock_run.assert_called_once_with(
+                            ["cpio", "--extract", "--to-stdout", "--quiet", "./usr/lib/plugin.so"],
+                            input=b"cpio-stream", capture_output=True, check=True
+                        )
 
     def test_existing_plugin_is_not_overwritten_on_mismatch(self):
         with tempfile.TemporaryDirectory() as directory:

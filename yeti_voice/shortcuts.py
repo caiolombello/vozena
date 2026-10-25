@@ -29,7 +29,7 @@ class _Types:
 
 
 class _BusctlInterface:
-    """Use Fedora's system D-Bus client from the isolated Python runtime."""
+    """Use the system D-Bus client from the isolated Python runtime."""
     def _call(self, method, signature, arguments, result_type="", timeout=.5):
         result = subprocess.run(
             ["busctl", "--user", f"--timeout={timeout}", "--json=short", "call",

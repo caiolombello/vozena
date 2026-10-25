@@ -25,7 +25,7 @@ The preparer stores the wrapper's verified license at `.deps/rnnoise/LICENSE` al
 
 The Fedora RPM supplies `COPYING` and `COPYING.LESSER`; the preparer extracts and verifies both under `.deps/lsp/usr/share/licenses/lsp-plugins-ladspa/`.
 
-The pinned LSP binary is built for Fedora 44 x86_64 and requires glibc 2.43. It is not presented as a portable binary for older Fedora releases or other distributions.
+The pinned LSP binary is built for Fedora 44 x86_64 and requires glibc 2.43. It is verified and supported on Fedora 44 and Ubuntu 26.04/26.10 x86_64. It is not presented as a portable binary for older Fedora/Ubuntu releases or other distributions.
 
 ## Python and Qt runtime
 
@@ -38,4 +38,4 @@ Vozena's isolated runtime installs these hash-pinned official PyPI wheels:
 
 Qt for Python is available under the GNU Lesser General Public License version 3 and other licensing options described in the [Qt for Python licensing documentation](https://doc.qt.io/qtforpython-6/licenses.html). The installed wheel metadata and license files govern each exact component.
 
-Fedora system libraries, PipeWire, Python, and other operating-system packages are installed and licensed independently by Fedora; they are not part of the Vozena source archive.
+Fedora and Ubuntu system libraries, PipeWire, Python, and other operating-system packages are installed and licensed independently by their respective distributions; they are not part of the Vozena source archive.

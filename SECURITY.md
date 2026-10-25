@@ -4,7 +4,7 @@
 
 Report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/caiolombello/vozena/security/advisories/new). Please do not disclose vulnerability details in a public issue, discussion, pull request, log, or recording.
 
-Include the affected version, Fedora and PipeWire versions, reproduction steps, expected and observed behavior, and the security impact. Remove audio, credentials, usernames, private paths, meeting information, and unrelated device metadata unless a specific detail is essential to reproduce the problem.
+Include the affected version, Linux distribution (Fedora or Ubuntu) and PipeWire versions, reproduction steps, expected and observed behavior, and the security impact. Remove audio, credentials, usernames, private paths, meeting information, and unrelated device metadata unless a specific detail is essential to reproduce the problem.
 
 Ordinary bugs and feature requests can use the [public issue tracker](https://github.com/caiolombello/vozena/issues).
 

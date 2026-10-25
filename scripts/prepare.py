@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -46,19 +47,22 @@ def dependency_path(root: Path, relative: str) -> Path:
 
 def check_platform() -> None:
     release = platform.freedesktop_os_release()
-    if (sys.platform != "linux" or release.get("ID") != "fedora"
-            or release.get("VERSION_ID") != "44" or platform.machine() != "x86_64"):
-        raise ValueError("This bootstrap supports Fedora 44 x86_64 only; other distributions are untested.")
+    distro_id = release.get("ID", "").lower()
+    version_id = release.get("VERSION_ID", "")
+    is_fedora_44 = distro_id == "fedora" and version_id == "44"
+    is_ubuntu_26 = distro_id == "ubuntu" and version_id.split(".")[:2] in (["26", "04"], ["26", "10"])
+    if sys.platform != "linux" or not (is_fedora_44 or is_ubuntu_26) or platform.machine() != "x86_64":
+        raise ValueError("This bootstrap supports Fedora 44 and Ubuntu 26.04/26.10 x86_64 only; other distributions are untested.")
     if sys.version_info < (3, 11):
         raise ValueError("Python 3.11 or newer is required.")
     libc, version = platform.libc_ver()
     if libc != "glibc" or tuple(int(part) for part in version.split(".")) < (2, 43):
-        raise ValueError("The pinned Fedora plugin requires glibc >= 2.43.")
-    missing = [name for name in ("pipewire", "pw-dump", "pw-cli", "pw-cat", "rpm2cpio", "cpio")
+        raise ValueError("The pinned LSP plugin requires glibc >= 2.43.")
+    missing = [name for name in ("pipewire", "pw-dump", "pw-cli", "pw-cat", "cpio")
                if not shutil.which(name)]
     if missing:
         raise ValueError("Missing system commands: " + ", ".join(missing)
-                         + ". See the Fedora prerequisites in README.md.")
+                         + ". See the prerequisites in README.md.")
 
 
 def download(url: str, destination: Path, expected_hash: str) -> Path:
@@ -108,18 +112,57 @@ def write_verified(destination: Path, payload: bytes, expected_hash: str) -> Non
         temporary.unlink(missing_ok=True)
 
 
+def _extract_rpm_payload(archive: Path) -> bytes:
+    data = archive.read_bytes()
+    if len(data) < 96 or data[:4] != b"\xed\xab\xee\xdb":
+        raise ValueError(f"Invalid RPM lead in {archive}")
+    offset = 96
+    magic, _, nindex, hsize = struct.unpack(">4s4sII", data[offset:offset + 16])
+    if magic != b"\x8e\xad\xe8\x01":
+        raise ValueError(f"Invalid RPM signature header in {archive}")
+    offset += 16 + 16 * nindex + hsize
+    if offset % 8 != 0:
+        offset += 8 - (offset % 8)
+    magic, _, nindex, hsize = struct.unpack(">4s4sII", data[offset:offset + 16])
+    if magic != b"\x8e\xad\xe8\x01":
+        raise ValueError(f"Invalid RPM main header in {archive}")
+    offset += 16 + 16 * nindex + hsize
+    payload = data[offset:]
+    if payload.startswith(b"\x28\xb5\x2f\xfd"):
+        try:
+            import zstandard
+        except ImportError as exc:
+            raise ValueError("Extracting zstd-compressed RPM requires python3-zstandard or rpm2cpio") from exc
+        return zstandard.ZstdDecompressor().decompress(payload, max_output_size=50 * 1024 * 1024)
+    if payload.startswith(b"\x1f\x8b"):
+        import gzip
+        return gzip.decompress(payload)
+    if payload.startswith(b"\xfd7zXZ\x00"):
+        import lzma
+        return lzma.decompress(payload)
+    if payload.startswith(b"BZh"):
+        import bz2
+        return bz2.decompress(payload)
+    raise ValueError(f"Unsupported compression format for RPM payload in {archive}")
+
+
 def archive_member(archive: Path, kind: str, member: str) -> bytes:
     # Never extract whole archives or let archive paths create files.
     if kind == "zip":
         with zipfile.ZipFile(archive) as stream:
             return stream.read(member)
     if kind == "rpm":
-        with tempfile.TemporaryFile() as cpio_stream:
-            subprocess.run(["rpm2cpio", str(archive)], stdout=cpio_stream, check=True)
-            cpio_stream.seek(0)
-            result = subprocess.run(["cpio", "--extract", "--to-stdout", "--quiet", member],
-                                    stdin=cpio_stream, capture_output=True, check=True)
-            return result.stdout
+        if shutil.which("rpm2cpio"):
+            with tempfile.TemporaryFile() as cpio_stream:
+                subprocess.run(["rpm2cpio", str(archive)], stdout=cpio_stream, check=True)
+                cpio_stream.seek(0)
+                result = subprocess.run(["cpio", "--extract", "--to-stdout", "--quiet", member],
+                                        stdin=cpio_stream, capture_output=True, check=True)
+                return result.stdout
+        cpio_payload = _extract_rpm_payload(archive)
+        result = subprocess.run(["cpio", "--extract", "--to-stdout", "--quiet", member],
+                                input=cpio_payload, capture_output=True, check=True)
+        return result.stdout
     raise ValueError(f"Unsupported archive format: {kind}")
 
 

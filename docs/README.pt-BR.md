@@ -1,24 +1,25 @@
+<div align="center">
+
 # Vozena
 
-Processamento de voz nativo e local para o Blue Yeti USB clássico em chamadas no Linux.
+**Processamento de voz em tempo real para Linux.**  
+Feito para voz limpa, dispositivos virtuais confiáveis e controle local claro.
 
-![Aplicativo Vozena](../site/assets/app.webp)
+[![CI](https://github.com/caiolombello/vozena/actions/workflows/ci.yml/badge.svg)](https://github.com/caiolombello/vozena/actions/workflows/ci.yml)
+[![Licença: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0--or--later-blue.svg)](../LICENSE)
 
-A Vozena cria um microfone virtual do PipeWire chamado **Yeti Processado**. O sinal passa por filtro passa-altas de 80 Hz, redução de ruído com RNNoise, equalização suave para voz, compressão, ganho por software e limitador de pico. Selecione esse microfone virtual no aplicativo de chamadas e mantenha a Vozena aberta durante a conversa.
+</div>
 
-Todo o processamento de áudio acontece no seu computador. A Vozena não tem servidor de rede, conta, processamento em nuvem nem telemetria. A comparação opcional grava um par original/tratado de 10 segundos somente quando você manda gravar, mantém o áudio na memória RAM, nunca o reproduz automaticamente e o apaga quando você o descarta ou fecha o aplicativo.
-
-[English](../README.md) · [Site](https://caiolombello.github.io/vozena/) · [Versões](https://github.com/caiolombello/vozena/releases)
-
-## Escopo atual
+---
 
 A Vozena v0.4.2 é uma versão pública de prévia. Ela foi validada em:
 
 - Fedora 44 x86_64
+- Ubuntu 26.04 e 26.10 x86_64, incluindo o Kubuntu
 - KDE Plasma com PipeWire 1.6.9
 - Blue Yeti USB clássico (`USB b58e:9e84`)
 
-Outras distribuições Linux, interfaces gráficas, arquiteturas, versões do PipeWire e outros microfones ainda não foram validados. O pacote LSP fixado do Fedora exige glibc 2.43; por isso, o preparador aceita apenas Fedora 44 x86_64. Windows e macOS não são compatíveis.
+Outras distribuições Linux, interfaces gráficas, arquiteturas, versões do PipeWire e outros microfones ainda não foram validados. O pacote LSP fixado do Fedora exige glibc 2.43; por isso, o preparador aceita Fedora 44 e Ubuntu 26.04/26.10 x86_64. Windows e macOS não são compatíveis.
 
 A Vozena não cancela eco e não promete remover todos os sons de fundo. Ela não controla o ganho físico nem o padrão de captação do microfone; faça esses ajustes no próprio Blue Yeti. Não há garantia de funcionamento com um aplicativo de chamadas específico.
 
@@ -26,14 +27,23 @@ A Vozena não cancela eco e não promete remover todos os sons de fundo. Ela nã
 
 A versão publicada é um arquivo limpo de código-fonte. Ela não contém `.deps`, ambiente virtual, binários de plugins nem wheels do Python. Portanto, a preparação precisa de conexão de rede para baixar arquivos fixados do GitHub, Fedora e PyPI.
 
-1. Instale os pré-requisitos do Fedora:
+1. Instale os pré-requisitos do sistema:
+
+   **No Fedora 44:**
 
    ```bash
    sudo dnf install python3 python3-pip pipewire pipewire-utils rpm cpio systemd \
      libsndfile libatomic libstdc++ xcb-util-cursor
    ```
 
-   Uma instalação normal do Fedora 44 KDE já fornece as demais bibliotecas gráficas do Qt usadas pelo aplicativo.
+   **No Ubuntu ou Kubuntu 26.04/26.10:**
+
+   ```bash
+   sudo apt install python3 python3-pip python3-venv pipewire pipewire-bin cpio systemd \
+     libsndfile1 libatomic1 libstdc++6 libxcb-cursor0 rpm2cpio
+   ```
+
+   Uma instalação normal do Fedora 44 ou Kubuntu 26.04/26.10 já fornece as demais bibliotecas gráficas do Qt usadas pelo aplicativo.
 
 2. Pelo navegador, baixe `vozena-0.4.2-source.tar.gz` e `SHA256SUMS` na [versão v0.4.2](https://github.com/caiolombello/vozena/releases/tag/v0.4.2). Coloque os dois arquivos na mesma pasta e confira o arquivo antes de extraí-lo:
 
@@ -69,45 +79,70 @@ python3 scripts/prepare.py --check
 
 ## Instalar a partir de um clone Git
 
-Instale os mesmos pré-requisitos do Fedora e execute:
+Instale os pré-requisitos do sistema para a sua distribuição (Fedora ou Ubuntu) como indicado acima e execute:
 
 ```bash
-sudo dnf install git
 git clone https://github.com/caiolombello/vozena.git
 cd vozena
 python3 scripts/prepare.py
 ~/.local/bin/vozena
 ```
 
-As opções de preparação para desenvolvimento e CI aparecem em `python3 scripts/prepare.py --help`. `--plugins-only` prepara apenas os plugins nativos fixados, `--root` seleciona outro checkout do código e `--venv-dir` seleciona um diretório absoluto para o ambiente persistente.
+Opções de preparação para desenvolvimento e integração contínua estão documentadas em `python3 scripts/prepare.py --help`. `--plugins-only` prepara apenas os plugins nativos fixados, `--root` seleciona outra pasta de código-fonte e `--venv-dir` define uma pasta persistente e absoluta para o ambiente de execução.
 
-## Usar
+## Primeira configuração
 
-1. Conecte o Blue Yeti USB clássico e abra a Vozena. O aplicativo inicia pausado.
-2. Ajuste redução de ruído, clareza da voz e volume por software, ou escolha um perfil.
-3. Se quiser, faça a calibração guiada de 10 segundos: fique em silêncio por 3 segundos, fale normalmente por 7 segundos, confira a sugestão e clique em **Aplicar ajustes**. A calibração nunca aplica uma sugestão sozinha.
-4. Clique em **Ativar tratamento**.
-5. Selecione **Yeti Processado** como microfone no aplicativo de chamadas.
+1. Conecte seu Blue Yeti e mude a chave física de padrão polar na parte traseira para **Cardioide** (ícone em formato de coração).
+2. Ajuste o botão físico de ganho na parte traseira para que sua fala mais alta nunca distorça.
+3. Abra a Vozena e clique em **Ativar tratamento**.
+4. No seu aplicativo de chamadas (Discord, Google Meet, Teams, Zoom, Slack, Telegram, OBS Studio), selecione **Yeti Processado** como microfone.
+5. Nesse mesmo aplicativo, desative a supressão de ruído interna e o ganho automático para que dois filtros não disputem o mesmo sinal.
 
-A Vozena reconecta o grafo PipeWire que ela própria criou depois que o Yeti, o PipeWire ou o computador volta. No KDE, `Meta+Shift+M` alterna o silêncio quando esse atalho está disponível. Fechar a janela mantém o tratamento na bandeja do sistema quando há bandeja; use o menu da bandeja para encerrar.
+## Uso no dia a dia
 
-Os ajustes ficam em `~/.config/yeti-voice/settings.json`. O pacote Python interno e os caminhos de dados locais mantêm os nomes `yeti_voice` e `yeti-voice` para preservar a compatibilidade com instalações existentes.
+- **Ícone na bandeja**: fechar a janela principal mantém a Vozena rodando na bandeja do sistema. Use o ícone para reabrir os controles ou fechar o aplicativo.
+- **Atalho global para silenciar**: pressione <kbd>Meta</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> em qualquer lugar do desktop para alternar o silêncio. Você pode redefinir o atalho em **Configurações do KDE → Atalhos → Vozena**.
+- **Controles rápidos**:
+  - **Suavização de ruído**: ajuste o equilíbrio entre o som ambiente natural e uma supressão mais firme.
+  - **Portão de ruído**: define o volume mínimo para fechar a captação de sons de fundo.
+  - **Volume de saída**: ajuste fino do volume da voz tratada.
+  - **Testar voz**: grave uma frase de teste na memória, escute a versão original comparada à tratada e aplique os ajustes calibrados.
+- **Desconexão do microfone**: se você desconectar o Blue Yeti, a Vozena pausa automaticamente e libera o dispositivo. Conecte de novo e clique em **Reconectar**.
 
-## Desinstalar
+## Desinstalação
 
-Feche a Vozena, confira os caminhos pertencentes ao aplicativo que seriam removidos e só então desinstale:
+Para remover o aplicativo, o lançador e o atalho no menu, sem tocar nas suas preferências:
 
 ```bash
-python3 scripts/uninstall.py --dry-run
 python3 scripts/uninstall.py
 ```
 
-O desinstalador confere os marcadores de propriedade da Vozena e se recusa a continuar enquanto houver uma instância aberta. Ele remove as versões gerenciadas do aplicativo, o atalho do menu e os lançadores principal e de compatibilidade. Os ajustes em `~/.config/yeti-voice/settings.json` e o ambiente reutilizável em `~/.local/share/vozena/runtime/` são preservados.
+As preferências continuam salvas em `~/.config/yeti-voice/settings.json` e o ambiente Python isolado continua em `~/.local/share/vozena/runtime/`.
 
-## Contribuição e segurança
+## Arquitetura
 
-Consulte [CONTRIBUTING.md](../CONTRIBUTING.md) para os testes locais e os limites do projeto. Relate problemas de segurança pelo [formulário privado do GitHub](https://github.com/caiolombello/vozena/security/advisories/new), não por uma issue pública.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ Blue Yeti (nó físico ALSA / PipeWire)                                  │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ PipeWire Filter Chain: vozena-yeti-sink                                │
+│   ├─ Supressão de ruído LADSPA (RNNoise v1.10)                         │
+│   ├─ Portão LADSPA (LSP Plugins v1.2.29)                               │
+│   └─ Limitador LADSPA (LSP Plugins v1.2.29)                            │
+└──────────────────────────────────┬─────────────────────────────────────┘
+                                   │
+                                   ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ Fonte Virtual: Yeti Processado                                         │
+│   └─ selecionada pelos aplicativos de chamadas                         │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
-A Vozena é licenciada sob [GPL-3.0-or-later](../LICENSE). As dependências baixadas mantêm suas próprias licenças; consulte [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+Todo o processamento acontece no seu computador, por meio de plugins LADSPA carregados no PipeWire. Nenhum áudio é transmitido pela rede.
 
-A Vozena é um projeto independente de código aberto, sem afiliação ou endosso da Blue ou da Logitech. Blue Yeti e Logitech são marcas de seus respectivos proprietários.
+## Contribuição
+
+Consulte [CONTRIBUTING.md](../CONTRIBUTING.md) e [SECURITY.md](../SECURITY.md) antes de enviar alterações ou relatar falhas de segurança.
