@@ -7,13 +7,12 @@ Controls are verified against the bundled LADSPA descriptors.
 import json
 from pathlib import Path
 
+from .plugins import plugin_paths
 from .settings import Settings
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_NODE = "yeti_voice.processed"
 CAPTURE_NODE = "yeti_voice.capture"
-RNNOISE = ROOT / ".deps/rnnoise/linux-rnnoise/ladspa/librnnoise_ladspa.so"
-LSP = ROOT / ".deps/lsp/usr/lib64/ladspa/lsp-plugins-ladspa.so"
 
 
 def controls(settings: Settings, *, bypass=False, muted=False):
@@ -31,13 +30,15 @@ def controls(settings: Settings, *, bypass=False, muted=False):
 
 
 def make_config(settings: Settings, source_name: str, *, output_node=OUTPUT_NODE, capture_node=CAPTURE_NODE,
-                bypass=False, muted=False):
+                bypass=False, muted=False, plugins=None):
     values = controls(settings, bypass=bypass, muted=muted)
+    plugins = plugins or plugin_paths()
+    rnnoise, lsp = str(plugins["rnnoise"]), str(plugins["lsp"])
     nodes = [
         {"type": "builtin", "name": "input", "label": "copy"},
         {"type": "builtin", "name": "rumble", "label": "bq_highpass",
          "control": {"Freq": 80.0, "Q": 0.707}},
-        {"type": "ladspa", "name": "denoise", "plugin": str(RNNOISE),
+        {"type": "ladspa", "name": "denoise", "plugin": rnnoise,
          "label": "noise_suppressor_mono", "control": {
              "VAD Threshold (%)": 0.0, "VAD Grace Period (ms)": 200.0,
              "Retroactive VAD Grace (ms)": 0.0}},
@@ -48,7 +49,7 @@ def make_config(settings: Settings, source_name: str, *, output_node=OUTPUT_NODE
         {"type": "builtin", "name": "blend", "label": "mixer", "control": values["blend"]},
         {"type": "builtin", "name": "body", "label": "bq_lowshelf", "control": values["body"]},
         {"type": "builtin", "name": "presence", "label": "bq_peaking", "control": values["presence"]},
-        {"type": "ladspa", "name": "compressor", "plugin": str(LSP),
+        {"type": "ladspa", "name": "compressor", "plugin": lsp,
          "label": "http://lsp-plug.in/plugins/ladspa/compressor_mono", "control": {
              "Bypass": 0.0, "Input gain (G)": 1.0, "Output gain (G)": 1.0,
              "Sidechain type": 0.0, "Sidechain mode": 1.0,
@@ -60,7 +61,7 @@ def make_config(settings: Settings, source_name: str, *, output_node=OUTPUT_NODE
              "Makeup gain (G)": 10 ** (3 / 20), "Dry gain (G)": 0.0,
              "Wet gain (G)": 1.0, "Dry/Wet balance (%)": 100.0}},
         {"type": "builtin", "name": "gain", "label": "mixer", "control": values["gain"]},
-        {"type": "ladspa", "name": "limiter", "plugin": str(LSP),
+        {"type": "ladspa", "name": "limiter", "plugin": lsp,
          "label": "http://lsp-plug.in/plugins/ladspa/limiter_mono", "control": {
              "Bypass": 0.0, "Input gain (G)": 1.0, "Output gain (G)": 1.0,
              "Sidechain preamp (G)": 1.0, "Automatic level regulation": 0.0,
@@ -102,6 +103,16 @@ def make_config(settings: Settings, source_name: str, *, output_node=OUTPUT_NODE
             }},
         ],
     }
+
+
+def ladspa_requirements():
+    """{plugin: {label: [controls Vozena sets]}}, taken from the graph itself."""
+    config = make_config(Settings(), "requirements", plugins={"rnnoise": "rnnoise", "lsp": "lsp"})
+    required = {}
+    for node in config["context.modules"][-1]["args"]["filter.graph"]["nodes"]:
+        if node["type"] == "ladspa":
+            required.setdefault(node["plugin"], {}).setdefault(node["label"], []).extend(node.get("control", {}))
+    return required
 
 
 def props_payload(settings: Settings, *, bypass=False, muted=False):

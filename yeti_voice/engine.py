@@ -12,6 +12,7 @@ import time
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
+from .plugins import is_system, verify_system_plugin
 from .processing import CAPTURE_NODE, OUTPUT_NODE, ROOT, make_config, props_payload, serialize_config
 from .settings import Settings
 from .speech import SpeechDetector
@@ -106,6 +107,14 @@ def check_dependencies():
             raise RuntimeError(f"Componente de áudio ausente: {command}")
     manifest = json.loads((ROOT / ".deps/manifest.json").read_text())
     for label, item in manifest.items():
+        if is_system(item):
+            # Distribution plugins change with system updates: check safety and
+            # controls (cached per file version) instead of a pinned hash.
+            try:
+                verify_system_plugin(label, item["path"])
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                raise RuntimeError(str(error)) from error
+            continue
         path = ROOT / ".deps" / item["path"]
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != item["sha256"]:
             raise RuntimeError(f"Filtro {label} ausente ou diferente da versão preparada")

@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   test:
-    name: ${{ matrix.distro }} offline tests
+    name: ${{ matrix.distro }} offline tests (${{ matrix.lsp }} LSP)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -25,6 +25,7 @@ jobs:
       matrix:
         include:
           - distro: Fedora 44
+            lsp: pinned
             image: registry.fedoraproject.org/fedora@sha256:b0d8e732ad7e4fc32b6c77e040c40be98a8092f237271d264cc8d36fd9674372
             setup: |
               dnf -y install python3 python3-pip git rpm cpio \
@@ -32,6 +33,7 @@ jobs:
                 xcb-util-cursor mesa-libGL fontconfig libxkbcommon \
                 libxkbcommon-x11 dbus-libs nodejs
           - distro: Ubuntu 26.04
+            lsp: pinned
             image: ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
             setup: |
               apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -40,13 +42,15 @@ jobs:
                 libxcb-cursor0 libgl1 libegl1 fontconfig libxkbcommon0 \
                 libxkbcommon-x11-0 libdbus-1-3 nodejs
           - distro: Ubuntu 26.10
+            # The distribution's LSP plugin instead of the pinned Fedora build.
+            lsp: system
             image: ubuntu:26.10@sha256:93e29beff5257b2cdf1c024d831f6d2997e53655a653ff76a811fc9e6564a719
             setup: |
               apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
                 python3 python3-pip python3-venv git cpio rpm2cpio \
                 pipewire pipewire-bin libsndfile1 libatomic1 libstdc++6 \
                 libxcb-cursor0 libgl1 libegl1 fontconfig libxkbcommon0 \
-                libxkbcommon-x11-0 libdbus-1-3 nodejs
+                libxkbcommon-x11-0 libdbus-1-3 nodejs lsp-plugins-ladspa
     container:
       # Verified distribution container images with glibc >= 2.43
       image: ${{ matrix.image }}
@@ -65,7 +69,7 @@ jobs:
           persist-credentials: false
       - name: Prepare verified plugins and locked Python dependencies
         run: |
-          python3 scripts/prepare.py --plugins-only
+          python3 scripts/prepare.py --plugins-only --lsp ${{ matrix.lsp }}
           python3 -m venv .venv
           .venv/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
       - name: Run unit, UI, and offline DSP tests

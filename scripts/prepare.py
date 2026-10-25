@@ -55,14 +55,48 @@ def check_platform() -> None:
         raise ValueError("This bootstrap supports Fedora 44 and Ubuntu 26.04/26.10 x86_64 only; other distributions are untested.")
     if sys.version_info < (3, 11):
         raise ValueError("Python 3.11 or newer is required.")
-    libc, version = platform.libc_ver()
-    if libc != "glibc" or tuple(int(part) for part in version.split(".")) < (2, 43):
-        raise ValueError("The pinned LSP plugin requires glibc >= 2.43.")
-    missing = [name for name in ("pipewire", "pw-dump", "pw-cli", "pw-cat", "cpio")
+    missing = [name for name in ("pipewire", "pw-dump", "pw-cli", "pw-cat")
                if not shutil.which(name)]
     if missing:
         raise ValueError("Missing system commands: " + ", ".join(missing)
                          + ". See the prerequisites in README.md.")
+
+
+def check_pinned_lsp_requirements() -> None:
+    """Only the pinned Fedora LSP build needs glibc 2.43 and RPM extraction."""
+    libc, version = platform.libc_ver()
+    if libc != "glibc" or tuple(int(part) for part in version.split(".")) < (2, 43):
+        raise ValueError("The pinned LSP plugin requires glibc >= 2.43. "
+                         "Install your distribution's lsp-plugins-ladspa package instead.")
+    if not shutil.which("cpio"):
+        raise ValueError("Missing system command: cpio (needed to unpack the pinned LSP plugin), "
+                         "or install your distribution's lsp-plugins-ladspa package.")
+
+
+def vozena_plugins(root: Path):
+    """yeti_voice.plugins from the checkout being prepared (no Qt needed)."""
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from yeti_voice import plugins
+    return plugins
+
+
+def system_plugins(root: Path, choice: str = "auto") -> dict:
+    """{"lsp": Path} when a compatible distribution LSP plugin should be used."""
+    if choice == "pinned":
+        return {}
+    found = vozena_plugins(root).find_system_plugin("lsp", python=sys.executable)
+    if found is not None:
+        return {"lsp": found}
+    if choice == "system":
+        raise ValueError("No compatible distribution LSP plugin was found. "
+                         "Install lsp-plugins-ladspa or use --lsp pinned.")
+    return {}
+
+
+def manifest_system(manifest: dict, root: Path) -> dict:
+    plugins = vozena_plugins(root)
+    return {name: Path(entry["path"]) for name, entry in manifest.items() if plugins.is_system(entry)}
 
 
 def download(url: str, destination: Path, expected_hash: str) -> Path:
@@ -170,17 +204,23 @@ def plugin_lock(root: Path) -> dict:
     return json.loads((root / "scripts/plugins.lock.json").read_text(encoding="utf-8"))["plugins"]
 
 
-def manifest_for(lock: dict) -> dict:
-    return {name: {key: item[key] for key in ("version", "path", "sha256", "source")}
+def manifest_for(lock: dict, system: dict | None = None, root: Path = ROOT) -> dict:
+    system = system or {}
+    return {name: (vozena_plugins(root).system_entry(system[name]) if name in system else
+                   {key: item[key] for key in ("version", "path", "sha256", "source")})
             for name, item in lock.items()}
 
 
 def check_plugins(root: Path, *, load: bool = True) -> None:
     lock = plugin_lock(root)
     manifest = json.loads((root / ".deps/manifest.json").read_text(encoding="utf-8"))
-    if manifest != manifest_for(lock):
+    system = manifest_system(manifest, root)
+    if manifest != manifest_for(lock, system, root):
         raise ValueError("Prepared plugin manifest differs from scripts/plugins.lock.json.")
-    for item in lock.values():
+    for name, item in lock.items():
+        if name in system:
+            vozena_plugins(root).verify_system_plugin(name, system[name], python=sys.executable)
+            continue
         for entry in (item, *item["licenses"]):
             path = dependency_path(root, entry["path"])
             if path.is_symlink() or not path.is_file() or sha256(path) != entry["sha256"]:
@@ -189,21 +229,30 @@ def check_plugins(root: Path, *, load: bool = True) -> None:
             ctypes.CDLL(str(dependency_path(root, item["path"])))
 
 
-def prepare_plugins(root: Path) -> None:
+def prepare_plugins(root: Path, system: dict | None = None) -> None:
+    system = system or {}
     deps = root / ".deps"
     if deps.is_symlink():
         raise ValueError("Refusing a symlink .deps directory.")
     lock = plugin_lock(root)
     manifest = deps / "manifest.json"
-    expected = manifest_for(lock)
+    expected = manifest_for(lock, system, root)
     if manifest.is_symlink():
         raise ValueError("Refusing a symlink dependency manifest.")
-    if manifest.exists() and json.loads(manifest.read_text(encoding="utf-8")) != expected:
-        raise ValueError("Existing dependency manifest differs from the pinned release; preserved.")
+    if manifest.exists():
+        existing = json.loads(manifest.read_text(encoding="utf-8"))
+        # Switching between the pinned and the distribution LSP rewrites only a
+        # manifest this script generated; anything else is preserved.
+        if existing != manifest_for(lock, manifest_system(existing, root), root):
+            raise ValueError("Existing dependency manifest differs from the pinned release; preserved.")
+        if existing != expected:
+            manifest.unlink()
     # Validate existing files before downloading anything. Missing files can be
     # prepared, but mismatching user files must never be overwritten.
     complete = manifest.is_file()
-    for item in lock.values():
+    for name, item in lock.items():
+        if name in system:
+            continue
         for entry in (item, *item["licenses"]):
             path = dependency_path(root, entry["path"])
             if path.is_symlink() or (path.exists() and sha256(path) != entry["sha256"]):
@@ -213,6 +262,8 @@ def prepare_plugins(root: Path) -> None:
         check_plugins(root)
         return
     for label, item in lock.items():
+        if label in system:
+            continue
         entries = (item, *item["licenses"])
         if all(dependency_path(root, entry["path"]).is_file()
                and sha256(dependency_path(root, entry["path"])) == entry["sha256"]
@@ -283,18 +334,29 @@ def main(argv=None) -> int:
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--plugins-only", action="store_true", help="Prepare plugins without a runtime or installation")
     actions.add_argument("--check", action="store_true", help="Offline system/plugin/runtime verification; no installation")
+    parser.add_argument("--lsp", choices=("auto", "system", "pinned"), default="auto",
+                        help="LSP plugin source: the distribution package when compatible (auto), "
+                             "only the distribution package (system), or the pinned Fedora build (pinned)")
     options = parser.parse_args(argv)
     try:
         root = options.root.resolve(strict=True)
         check_platform()
         if options.check:
+            manifest = json.loads((root / ".deps/manifest.json").read_text(encoding="utf-8"))
+            if "lsp" not in manifest_system(manifest, root):
+                check_pinned_lsp_requirements()
             check_plugins(root)
             check_environment((options.venv_dir or runtime_dir(root)) / "bin/python")
-            print("Pinned plugins and Python runtime verified; no audio was started.")
+            print("Plugins and Python runtime verified; no audio was started.")
             return 0
-        prepare_plugins(root)
+        system = system_plugins(root, options.lsp)
+        if "lsp" in system:
+            print(f"Using the distribution's LSP plugin: {system['lsp']}", flush=True)
+        else:
+            check_pinned_lsp_requirements()
+        prepare_plugins(root, system)
         if options.plugins_only:
-            print("Pinned plugins prepared; no audio was started.")
+            print("Plugins prepared; no audio was started.")
             return 0
         python = prepare_environment(root, options.venv_dir or runtime_dir(root))
         subprocess.run([str(python), "-m", "yeti_voice.install", "--source-dir", str(root)],
