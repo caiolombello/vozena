@@ -165,6 +165,8 @@ class GraphUsageTests(unittest.TestCase):
         self.assertEqual(default_node_name(objects, "default.audio.source"), OUTPUT_NODE)
         self.assertEqual(default_node_name(objects, "default.configured.audio.source"), "alsa_input.yeti")
         self.assertIsNone(default_node_name(objects, "default.audio.sink"))
+        broken = graph(configured_source='x" broken')
+        self.assertIsNone(default_node_name(broken, "default.configured.audio.source"))
 
     def test_controller_publishes_usage_only_while_running(self):
         with patch.object(VoiceController, "refresh"):

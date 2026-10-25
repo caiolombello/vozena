@@ -67,7 +67,11 @@ def default_node_name(objects, key):
                 if item.get("key") == key:
                     value = item.get("value")
                     if isinstance(value, str):
-                        value = json.loads(value)
+                        # Other programs can write metadata; a bad value is ignored.
+                        try:
+                            value = json.loads(value)
+                        except ValueError:
+                            return None
                     if isinstance(value, dict) and isinstance(value.get("name"), str):
                         return value["name"]
     return None
