@@ -56,7 +56,7 @@ To verify the clean source archive:
 
 ```bash
 python3 scripts/build_release.py --output-dir dist
-tar -tzf dist/vozena-0.5.0-source.tar.gz
+tar -tzf dist/vozena-0.5.1-source.tar.gz
 ```
 
 Confirm that the archive contains source and public documentation and excludes `.deps`, `.venv`, `artifacts`, wheels, and native plugin binaries.
