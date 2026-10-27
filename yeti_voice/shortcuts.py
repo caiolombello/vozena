@@ -68,7 +68,9 @@ def bind_shortcut(interface, dbus):
     """KDE v2 API; flag 2 loads saved bindings without overwriting them."""
     identity = dbus.Array(ACTION_ID, signature="s")
     key = QKeySequence(DEFAULT_KEY)[0].toCombined()
-    sequence = dbus.Struct((dbus.Array([key], signature="i"),), signature="ai")
+    # kglobalaccel demarshals a QKeySequence as exactly four ints; a shorter
+    # array makes libdbus abort the whole kwin_wayland process.
+    sequence = dbus.Struct((dbus.Array([key, 0, 0, 0], signature="i"),), signature="ai")
     available = bool(interface.globalShortcutAvailable(sequence, ACTION_ID[0], timeout=.5))
     interface.doRegister(identity, timeout=.5)
     defaults = dbus.Array([sequence], signature="(ai)")

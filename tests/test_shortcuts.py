@@ -106,9 +106,10 @@ class ShortcutTests(unittest.TestCase):
                     "globalShortcutAvailable", "doRegister", "setShortcutKeys",
                     "setShortcutKeys", "getComponent",
                 ])
-                self.assertEqual(calls[0][9:], ["(ai)s", "1", "301989965", "yeti-voz"])
+                # kglobalaccel always reads four ints per QKeySequence; fewer aborts KWin.
+                self.assertEqual(calls[0][9:], ["(ai)s", "4", "301989965", "0", "0", "0", "yeti-voz"])
                 self.assertEqual(calls[2][9:], ["asa(ai)u", "4", *ACTION_ID,
-                                              "1", "1", "301989965", "8"])
+                                              "1", "4", "301989965", "0", "0", "0", "8"])
                 self.assertEqual(calls[3][-1], "2")
                 for call in run.call_args_list:
                     self.assertEqual(call.args[0][:4], ["busctl", "--user", "--timeout=0.5", "--json=short"])
